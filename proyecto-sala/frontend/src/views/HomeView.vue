@@ -1,63 +1,94 @@
 <script setup>
-// Importamos las herramientas de Vue y nuestro servicio de API
 import { ref, onMounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
-// Creamos variables "reactivas". Cuando su valor cambie, la vista se actualizará sola.
-const salas = ref([]);
+
+const reservas = ref([]);
 const cargando = ref(true);
 const error = ref(null);
 
-// onMounted es una función que se ejecuta automáticamente cuando el componente está listo
+
 onMounted(async () => {
   try {
-    // Llamamos a nuestro servicio para obtener los datos del backend
-    const response = await ApiService.obtenerSalas();
-    salas.value = response.data; // Guardamos la lista de salas en nuestra variable
+   
+    const response = await ApiService.obtenerReservas();
+    reservas.value = response.data;
   } catch (err) {
-    error.value = 'No se pudieron cargar las salas.';
+    error.value = 'No se pudieron cargar las reservas.';
     console.error(err);
   } finally {
-    cargando.value = false; // Dejamos de mostrar el mensaje "Cargando..."
+    cargando.value = false;
   }
 });
+
+
+function formatDateTime(dateTimeString) {
+  if (!dateTimeString) return 'N/A';
+  try {
+    const dt = new Date(dateTimeString);
+    return dt.toLocaleDateString('es-MX') + ' ' + dt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return 'Fecha inválida';
+  }
+}
 </script>
 
 <template>
-  <main>
-    <h1>Salas Audiovisuales</h1>
-    <div v-if="cargando">Cargando lista de salas...</div>
-    <div v-if="error" class="error">{{ error }}</div>
-    
-    <ul v-if="salas.length">
-      <!-- Usamos v-for para crear un elemento <li> por cada sala en nuestra lista -->
-      <li v-for="sala in salas" :key="sala.clave_sala">
-        <h2>{{ sala.nombre_sala }}</h2>
-        <p>Clave: {{ sala.clave_sala }}</p>
-        <p>División: {{ sala.division }}</p>
-      </li>
-    </ul>
-    <div v-else-if="!cargando">
-      No hay salas para mostrar.
-    </div>
-  </main>
+ 
+  <div id="disponibilidad-view">
+    <h3>Consultar Disponibilidad</h3>
+
+   
+    <div v-if="cargando" class="alert alert-info mt-3">Cargando información...</div>
+    <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
+
+   
+    <table v-if="!cargando && !error" class="table table-bordered mt-3">
+      <thead>
+        <tr>
+          <th>Nombre del maestro</th>
+          <th>Fecha de Apartado</th>
+          <th>Sala Apartada</th>
+          <th>Horario de Inicio</th>
+          <th>Horario de Finalización</th>
+          <th>División</th>
+        </tr>
+      </thead>
+      <tbody>
+      
+        <tr v-if="reservas.length === 0">
+          <td colspan="6" class="text-center">No hay reservas registradas.</td>
+        </tr>
+
+      
+        <tr v-else v-for="(reserva, index) in reservas" :key="reserva.id || index">
+          <td>{{ reserva.maestro }}</td>
+          <td>{{ formatDateTime(reserva.fecha_apartado) }}</td>
+          <td>{{ reserva.sala }}</td>
+          <td>{{ formatDateTime(reserva.inicio) }}</td>
+          <td>{{ formatDateTime(reserva.fin) }}</td>
+          
+          <td>{{ reserva.division || 'N/A' }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
 
 <style scoped>
-main {
-  padding: 1rem;
-}
-ul {
-  list-style-type: none;
-  padding: 0;
-}
-li {
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-.error {
-  color: red;
-}
+  
+  #disponibilidad-view { 
+    padding: 20px; 
+    background-color: #f8f9fa; 
+    border-radius: 8px;
+  }
+  
+ 
+  table {
+    background-color: #ffffff;
+  }
+  
+   .error {
+    color: #721c24;
+  }
 </style>

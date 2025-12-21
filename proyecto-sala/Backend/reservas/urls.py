@@ -12,4 +12,5 @@ router.register(r'reservas', views.ReservaViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    
 ]

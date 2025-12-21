@@ -1,6 +1,10 @@
 from rest_framework import viewsets
-from .models import Division, Asignatura, Sala, Maestro, Reserva, PerfilAdministrador
-from .serializers import DivisionSerializer, AsignaturaSerializer, SalaSerializer, MaestroSerializer, ReservaSerializer, PerfilAdministradorSerializer
+from .models import (Division, Asignatura, Sala, Maestro, 
+Reserva,
+PerfilAdministrador)
+from .serializers import (DivisionSerializer, AsignaturaSerializer, SalaSerializer, MaestroSerializer, 
+                          ReservaSerializer, 
+                          PerfilAdministradorSerializer)
 
 
 
