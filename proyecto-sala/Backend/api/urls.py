@@ -5,8 +5,8 @@ from django.views.generic.base import RedirectView
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    path('servicios/v1/', include('reservas.urls')),
+    path('api/v1/', include('reservas.urls')),
     
     
-     path('', RedirectView.as_view(url='/servicios/v1/', permanent=False)),
+     path('', RedirectView.as_view(url='/api/v1/', permanent=False)),
 ]

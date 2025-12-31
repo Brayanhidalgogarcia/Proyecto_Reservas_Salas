@@ -2,7 +2,7 @@ import axios from 'axios';
 
 
 const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000/servicios/v1/', 
+  baseURL: 'http://127.0.0.1:8000/api/v1/', 
   headers: {
     'Content-Type': 'application/json'
     
@@ -99,14 +99,16 @@ export default {
   },
 
  
-  obtenerReservas() {
-    return apiClient.get('/reservas/');
+  obtenerReservas(filtros = {}) {
+    // Convierte el objeto { clave: valor } a string de URL "clave=valor&..."
+    const params = new URLSearchParams(filtros).toString();
+    return apiClient.get(`/reservas/?${params}`);
   },
-  obtenerReserva(id) { 
+
+  obtenerReserva(id) {
     return apiClient.get(`/reservas/${id}/`);
   },
   crearReserva(datosReserva) {
-    
     return apiClient.post('/reservas/', datosReserva);
   },
   actualizarReserva(id, datosReserva) {
@@ -114,7 +116,7 @@ export default {
   },
   eliminarReserva(id) {
     return apiClient.delete(`/reservas/${id}/`);
-  },
+  }
 
 };
 
