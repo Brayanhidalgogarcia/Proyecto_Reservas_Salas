@@ -2,54 +2,54 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
-// --- CONFIGURACIÓN ---
-const HORARIO_APERTURA = 8; // 8:00 AM
-const HORARIO_CIERRE = 16;  // 16:00 PM
 
-// --- ESTADO DEL FORMULARIO ---
+const HORARIO_APERTURA = 8;
+const HORARIO_CIERRE = 16;  
+
+
 const nuevaReserva = ref({
   maestro: null,
   asignatura: null,
   sala: null,
   tema: '',
-  fecha: new Date().toISOString().split('T')[0], // Por defecto: Hoy
+  fecha: new Date().toISOString().split('T')[0], 
   inicio: '',
   fin: ''     
 });
 
-// Listas de datos (Catálogos)
+
 const maestros = ref([]);
 const asignaturas = ref([]);
 const salas = ref([]);
 
-// Estado de la Vista
-const reservasExistentes = ref([]); // Todos los datos crudos para validar
+
+const reservasExistentes = ref([]); 
 const cargando = ref(false);
 const enviando = ref(false);
 const error = ref(null);
 const mensajeExito = ref(null);
 
-// WebSocket
+
 let socket = null;
 
-// --- 1. CARGA DE DATOS INICIALES ---
+
 async function cargarDatosIniciales() {
   cargando.value = true;
   error.value = null;
   try {
-    // 1. Cargamos catálogos con tu ApiService
+    
     const [resMaestros, resAsignaturas, resSalas] = await Promise.all([
       ApiService.obtenerMaestros(),
       ApiService.obtenerAsignaturas(),
       ApiService.obtenerSalas()
     ]);
     
-    // Asignación de datos robusta
+    
     maestros.value = resMaestros.data || resMaestros;
     asignaturas.value = resAsignaturas.data || resAsignaturas;
     salas.value = resSalas.data || resSalas;
 
-    // 2. Cargamos las reservas para la tabla y validaciones
+    
     await cargarReservasTabla();
 
   } catch (err) {
@@ -60,22 +60,22 @@ async function cargarDatosIniciales() {
   }
 }
 
-// Función para actualizar la lista de reservas (usada por Init y WebSockets)
+
 async function cargarReservasTabla() {
     try {
         const response = await fetch('http://127.0.0.1:8000/api/v1/reservas/');
         if (response.ok) {
             const data = await response.json();
-            // Mapeamos para tener fechas y horas fáciles de comparar
+            
             reservasExistentes.value = data.map(r => {
-                // Parseamos fechas estándar
+                
                 const fechaStr = r.inicio ? r.inicio.split('T')[0] : '';
                 
-                // Extraemos hora HH:MM local del usuario
+                
                 const inicioStr = r.inicio ? new Date(r.inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false}) : '';
                 const finStr = r.fin ? new Date(r.fin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false}) : '';
 
-                // Detectar si 'sala' es un objeto o un string directo
+                
                 let nombreSalaReal = 'Sala desconocida';
                 let idSalaReal = null;
 
@@ -105,11 +105,11 @@ async function cargarReservasTabla() {
     }
 }
 
-// --- 2. LÓGICA DE HORARIOS ---
+
 
 const minFecha = computed(() => new Date().toISOString().split('T')[0]);
 
-// Generador de horas (08:00, 09:00...)
+
 const generarHoras = () => {
     const horas = [];
     for (let i = HORARIO_APERTURA; i <= HORARIO_CIERRE; i++) {
@@ -118,50 +118,50 @@ const generarHoras = () => {
     return horas;
 };
 
-// --- CORRECCIÓN 1: SELECTOR DE INICIO INTELIGENTE ---
+
 const opcionesHoraInicio = computed(() => {
     let horas = generarHoras();
     
-    // A) Filtro Temporal: Si es hoy, quitar horas pasadas
+    
     if (nuevaReserva.value.fecha === minFecha.value) {
         const horaActual = new Date().getHours();
         horas = horas.filter(h => parseInt(h.split(':')[0]) > horaActual);
     }
 
-    // B) Filtro de Ocupación: Si hay sala seleccionada
+    
     if (nuevaReserva.value.sala) {
-        // 1. Buscamos nombre de sala para comparar
+        
         const salaObj = salas.value.find(s => (s.id || s.clave_sala) === nuevaReserva.value.sala);
         const nombreSala = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
 
-        // 2. Filtramos reservas de esa sala/fecha
+        
         const ocupaciones = reservasExistentes.value.filter(r => {
             const coincideSala = (r.salaId === nuevaReserva.value.sala) || (String(r.salaNombre) === String(nombreSala));
             return coincideSala && r.fecha === nuevaReserva.value.fecha;
         });
 
-        // 3. Quitamos las horas que caen DENTRO de una reserva existente
+        
         horas = horas.filter(h => {
-            // Una hora 'h' está ocupada si es >= inicio de reserva Y < fin de reserva
+            
             const estaOcupada = ocupaciones.some(r => h >= r.inicio && h < r.fin);
             return !estaOcupada;
         });
     }
 
-    // Regla: No iniciar a la hora de cierre (16:00)
+    
     return horas.filter(h => parseInt(h.split(':')[0]) < HORARIO_CIERRE);
 });
 
 
-// --- CORRECCIÓN 2: SELECTOR DE FIN INTELIGENTE ---
+
 const opcionesHoraFin = computed(() => {
     let horas = generarHoras();
     if (!nuevaReserva.value.inicio) return [];
     
-    // A) Solo horas posteriores al inicio
+    
     horas = horas.filter(h => h > nuevaReserva.value.inicio);
 
-    // B) Detectar "Techo" (Siguiente Reserva)
+    
     if (nuevaReserva.value.sala) {
         const salaObj = salas.value.find(s => (s.id || s.clave_sala) === nuevaReserva.value.sala);
         const nombreSala = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
@@ -171,15 +171,15 @@ const opcionesHoraFin = computed(() => {
             return coincideSala && r.fecha === nuevaReserva.value.fecha;
         });
 
-        // Buscamos si hay reservas que empiecen DESPUÉS de mi hora de inicio
+        
         const reservasFuturas = ocupaciones.filter(r => r.inicio >= nuevaReserva.value.inicio);
         
         if (reservasFuturas.length > 0) {
-            // Ordenamos para encontrar la más cercana
+            
             reservasFuturas.sort((a, b) => a.inicio.localeCompare(b.inicio));
             const siguienteReserva = reservasFuturas[0];
             
-            // Si la siguiente reserva empieza a las 13:00, mi hora fin máxima es 13:00.
+            
             horas = horas.filter(h => h <= siguienteReserva.inicio);
         }
     }
@@ -187,7 +187,7 @@ const opcionesHoraFin = computed(() => {
     return horas;
 });
 
-// --- 3. PROPIEDAD COMPUTADA: ESTADO DE SALAS (Tabla Derecha) ---
+
 const estadoSalasDiaSeleccionado = computed(() => {
     const dia = nuevaReserva.value.fecha;
     if (!dia) return [];
@@ -200,21 +200,21 @@ const estadoSalasDiaSeleccionado = computed(() => {
         const idSala = sala.id || sala.clave_sala;
         const nombreSala = sala.nombre_sala || sala.nombre;
 
-        // Filtramos reservas de ESTA sala en ESTE día
+        
         const ocupaciones = reservasExistentes.value.filter(r => {
             const coincideSala = (r.salaId == idSala) || (r.salaNombre === nombreSala);
             const coincideFecha = r.fecha === dia;
             
-            // Filtro visual: Ocultar reservas que YA terminaron hoy para la lista visual
+            
             const finHoraNum = parseInt(r.fin.split(':')[0]); 
             const esFutura = !esHoy || (finHoraNum > horaActual);
 
-            // Nota: Para calcular si está AGOTADA necesitamos TODAS las reservas del día, 
-            // incluso las que ya pasaron. Haremos ese cálculo aparte abajo.
+            
+            
             return coincideSala && coincideFecha && esFutura; 
         });
 
-        // --- CÁLCULO DE AGOTADA (RESTAURADO) ---
+        
         const todasReservasDia = reservasExistentes.value.filter(r => {
             const coincideSala = (r.salaId == idSala) || (r.salaNombre === nombreSala);
             return coincideSala && r.fecha === dia;
@@ -235,9 +235,9 @@ const estadoSalasDiaSeleccionado = computed(() => {
         return {
             id: idSala,
             nombre: nombreSala,
-            ocupado: ocupaciones.length > 0, // Si tiene reservas futuras visibles
+            ocupado: ocupaciones.length > 0, 
             horariosOcupados: ocupaciones.map(o => `${o.inicio} - ${o.fin}`),
-            agotada: esAgotada // Nueva bandera
+            agotada: esAgotada 
         };
     });
 });
@@ -246,35 +246,35 @@ function seleccionarSala(idSala) {
     nuevaReserva.value.sala = idSala;
 }
 
-// --- 4. ACCIONES ---
+
 
 async function agregarReserva() {
   enviando.value = true;
   error.value = null;
   mensajeExito.value = null;
 
-  // Validación 0: Campos Obligatorios (Sala, Maestro, Asignatura)
+  
   if (!nuevaReserva.value.maestro || !nuevaReserva.value.asignatura || !nuevaReserva.value.sala) {
       error.value = 'Por favor selecciona Sala, Maestro y Asignatura obligatoriamente.';
       enviando.value = false;
       return;
   }
 
-  // Validación 1: Fecha Pasada
+  
   if (nuevaReserva.value.fecha < minFecha.value) {
       error.value = 'No puedes reservar en el pasado.';
       enviando.value = false;
       return;
   }
 
-  // Validación 2: Lógica de Horas
+ 
   if (nuevaReserva.value.inicio >= nuevaReserva.value.fin) {
       error.value = 'La hora de inicio debe ser antes de la hora de fin.';
       enviando.value = false;
       return;
   }
 
-  // Validación 3: SOLAPAMIENTO (Validación de Seguridad)
+  
   const conflicto = reservasExistentes.value.find(r => {
       const mismaSala = String(r.salaId) == String(nuevaReserva.value.sala);
       const mismaFecha = r.fecha === nuevaReserva.value.fecha;
@@ -307,7 +307,7 @@ async function agregarReserva() {
     await ApiService.crearReserva(datosParaAPI);
     mensajeExito.value = '¡Reserva creada con éxito!';
     
-    // Resetear form
+    
     nuevaReserva.value = { 
         ...nuevaReserva.value, 
         maestro: null, 
@@ -325,7 +325,7 @@ async function agregarReserva() {
   }
 }
 
-// Nueva función: Cancelar Reserva
+
 async function cancelarReserva(id) {
     if(!confirm("¿Deseas cancelar esta reserva?")) return;
 
@@ -342,9 +342,9 @@ async function cancelarReserva(id) {
     }
 }
 
-// --- 5. WEBSOCKETS ---
+
 const conectarWebSocket = () => {
-  // Ajusta la IP si tu backend no está en localhost
+  
   socket = new WebSocket('ws://127.0.0.1:8000/ws/reservas/');
   
   socket.onmessage = () => {
@@ -368,7 +368,7 @@ onUnmounted(() => {
 <template>
   <div class="container-fluid p-4"> 
     <div class="row">
-        <!-- SECCIÓN FORMULARIO -->
+        
         <div class="col-lg-5 mb-4">
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white fw-bold py-3">
@@ -387,7 +387,7 @@ onUnmounted(() => {
                     </div>
 
                     <form @submit.prevent="agregarReserva">
-                        <!-- Fecha -->
+                        
                         <div class="mb-3 p-2 bg-light rounded border">
                             <label class="form-label fw-bold text-secondary small">FECHA DE USO</label>
                             <input 
@@ -400,7 +400,7 @@ onUnmounted(() => {
                             <div class="form-text text-muted small text-center">Selecciona el día para ver disponibilidad</div>
                         </div>
 
-                        <!-- Selectores -->
+                        
                         <div class="row g-2 mb-3">
                             <div class="col-md-6">
                                 <label class="form-label small">Maestro</label>
@@ -437,7 +437,7 @@ onUnmounted(() => {
                             <input type="text" class="form-control form-control-sm" v-model="nuevaReserva.tema" placeholder="Ej. Proyección">
                         </div>
 
-                        <!-- Horarios -->
+                       
                         <div class="row mb-4">
                             <label class="form-label fw-bold text-secondary small">HORARIO (08:00 - 16:00)</label>
                             
@@ -477,7 +477,7 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- COLUMNA DERECHA: TABLA INTELIGENTE -->
+        
         <div class="col-lg-7">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
@@ -498,7 +498,7 @@ onUnmounted(() => {
 
                         <div v-for="sala in estadoSalasDiaSeleccionado" :key="sala.id" class="list-group-item d-flex justify-content-between align-items-center py-3">
                             <div class="d-flex align-items-center">
-                                <!-- Icono de Estado -->
+                                
                                 <div 
                                     class="rounded-circle me-3 d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
                                     :class="sala.agotada ? 'bg-danger' : (sala.ocupado ? 'bg-warning' : 'bg-success')" 
@@ -509,7 +509,7 @@ onUnmounted(() => {
                                 <div>
                                     <h6 class="mb-0 fw-bold">{{ sala.nombre }}</h6>
                                     
-                                    <!-- AQUI ESTÁ LA LÓGICA VISUAL RESTAURADA -->
+                                    
                                     <div v-if="sala.agotada" class="text-danger small fw-bold">
                                         AGOTADA
                                     </div>
@@ -523,7 +523,7 @@ onUnmounted(() => {
                                 </div>
                             </div>
                             
-                            <!-- Botón 'Usar' con comparación flexible (==) y type="button" -->
+                           
                             <button 
                                 type="button"
                                 @click="seleccionarSala(sala.id)" 

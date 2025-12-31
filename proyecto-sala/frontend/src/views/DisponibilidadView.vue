@@ -1,25 +1,25 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
-// Estado de los datos
+
 const reservaciones = ref([]);
-const salas = ref([]); // Catálogo de salas
-const fechaSeleccionada = ref(new Date().toISOString().slice(0, 10)); // Fecha de hoy (YYYY-MM-DD)
-// Se eliminó la variable busqueda
+const salas = ref([]); 
+const fechaSeleccionada = ref(new Date().toISOString().slice(0, 10)); 
+
 const cargando = ref(true);
 const error = ref(null);
 
-// Variable para la conexión WebSocket
+
 let socket = null;
 
-// Carga de Datos (Salas + Reservas)
+
 const cargarDatos = async () => {
-  // Solo mostramos spinner si no tenemos datos previos (para evitar parpadeo en actualizaciones)
+  
   if (salas.value.length === 0) cargando.value = true;
   error.value = null; 
   
   try {
-    // Cargamos ambos endpoints en paralelo
+   
     const [resReservas, resSalas] = await Promise.all([
         fetch('http://127.0.0.1:8000/api/v1/reservas/'),
         fetch('http://127.0.0.1:8000/api/v1/salas/')
@@ -32,10 +32,10 @@ const cargarDatos = async () => {
     const dataReservas = await resReservas.json();
     const dataSalas = await resSalas.json();
 
-    // 1. Guardamos Salas
+    
     salas.value = dataSalas;
     
-    // 2. Procesamos Reservas
+    
     reservaciones.value = dataReservas.map(item => {
       const formatearHora = (isoString) => {
         if (!isoString) return '--:--';
@@ -51,7 +51,7 @@ const cargarDatos = async () => {
       return {
         id: item.id,
         maestro: item.maestro || 'Desconocido',
-        sala: item.sala || 'Sala sin nombre', // Este string debe coincidir con el nombre en salas
+        sala: item.sala || 'Sala sin nombre', 
         division: item.division || 'General',
         fecha: extraerFecha(item.inicio),
         inicio: formatearHora(item.inicio),
@@ -72,7 +72,7 @@ const cargarDatos = async () => {
   }
 };
 
-// --- LÓGICA DE WEBSOCKETS ---
+
 const conectarWebSocket = () => {
   console.log("Intentando conectar al WebSocket...");
   socket = new WebSocket('ws://127.0.0.1:8000/ws/reservas/');
@@ -82,7 +82,7 @@ const conectarWebSocket = () => {
   socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
     console.log("📩 Actualización recibida:", data.message);
-    cargarDatos(); // Recargamos todo al recibir notificación
+    cargarDatos(); 
   };
 
   socket.onclose = () => setTimeout(conectarWebSocket, 3000);
@@ -99,15 +99,15 @@ const cambiarDia = (dias) => {
   fechaSeleccionada.value = fecha.toISOString().slice(0, 10);
 };
 
-// --- PROPIEDAD COMPUTADA: AGRUPACIÓN POR SALAS (TODAS) ---
+
 const reservacionesPorSala = computed(() => {
   
-  // 1. Mapeamos TODAS las salas disponibles
+  
   const listaCompleta = salas.value.map(salaObj => {
-    // Aseguramos obtener el nombre correcto según tu API
+    
     const nombreSala = salaObj.nombre_sala || salaObj.nombre || `Sala ${salaObj.id}`;
 
-    // 2. Buscamos reservas para ESTA sala en la fecha seleccionada
+    
     const eventos = reservaciones.value.filter(reserva => {
         const isSameRoom = String(reserva.sala) === String(nombreSala);
         const isSameDate = reserva.fecha === fechaSeleccionada.value;
@@ -115,12 +115,12 @@ const reservacionesPorSala = computed(() => {
         return isSameRoom && isSameDate;
     });
 
-    // Ordenamos cronológicamente
+    
     eventos.sort((a, b) => new Date(a.inicioRaw) - new Date(b.inicioRaw));
 
     return {
         nombre: nombreSala,
-        capacidad: salaObj.capacidad, // Dato extra opcional
+        capacidad: salaObj.capacidad, 
         eventos: eventos
     };
   });
@@ -140,16 +140,16 @@ onUnmounted(() => {
 
 <template>
   <div class="container-fluid p-4">
-    <!-- Encabezado -->
+    
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
       <div class="d-flex align-items-center">
-        <!-- Título en NEGRO -->
+        
         <h2 class="text-dark mb-0 me-3 fw-bold">
           <i class="bi bi-calendar-check text-secondary"></i> Disponibilidad
         </h2>
       </div>
 
-      <!-- Controles: Fecha SOLAMENTE -->
+      
       <div class="d-flex flex-wrap gap-3 align-items-center">
         
         <div class="d-flex align-items-center bg-white p-1 rounded shadow-sm border">
@@ -171,21 +171,21 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Mensaje de Carga -->
+    
     <div v-if="cargando" class="text-center py-5">
       <div class="spinner-border text-primary" role="status"></div>
       <p class="mt-2 text-muted">Cargando agenda...</p>
     </div>
 
-    <!-- Mensaje de Error -->
+    
     <div v-else-if="error" class="alert alert-danger shadow-sm" role="alert">
       <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
     </div>
 
-    <!-- CONTENEDOR DE TARJETAS DE SALAS -->
+    
     <div v-else>
       
-      <!-- Caso: No hay salas (Backend vacío o filtro muy estricto) -->
+     
       <div v-if="reservacionesPorSala.length === 0" class="text-center py-5 bg-white rounded shadow-sm">
         <div class="text-muted opacity-50">
           <i class="bi bi-building-slash display-1"></i>
@@ -193,12 +193,12 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Grid de Salas -->
+      
       <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
         
         <div class="col" v-for="grupo in reservacionesPorSala" :key="grupo.nombre">
           <div class="card h-100 shadow-sm border-0 room-card">
-            <!-- Cabecera de la Sala -->
+            
             <div class="card-header bg-white border-bottom-0 pt-3 pb-2 d-flex justify-content-between align-items-center">
               <div class="d-flex align-items-center">
                 <div class="icon-box me-2 bg-light text-primary rounded-circle d-flex align-items-center justify-content-center" style="width:40px; height:40px;">
@@ -209,20 +209,20 @@ onUnmounted(() => {
                     <small v-if="grupo.capacidad" class="text-muted" style="font-size: 0.75rem;">Cap: {{ grupo.capacidad }}</small>
                 </div>
               </div>
-              <!-- Indicador rápido de estado -->
+              
               <span v-if="grupo.eventos.length === 0" class="badge bg-success bg-opacity-10 text-success rounded-pill px-2">Libre</span>
               <span v-else class="badge bg-warning bg-opacity-10 text-dark rounded-pill px-2">{{ grupo.eventos.length }} reservas</span>
             </div>
 
             <div class="card-body p-0 d-flex flex-column">
-              <!-- CASO: SALA LIBRE -->
+             
               <div v-if="grupo.eventos.length === 0" class="flex-grow-1 d-flex flex-column align-items-center justify-content-center py-5 text-center text-success bg-light bg-opacity-25 mx-2 mb-2 rounded border border-dashed border-success border-opacity-25">
                   <i class="bi bi-check-circle-fill fs-1 mb-2 opacity-75"></i>
                   <span class="fw-bold">Disponible</span>
                   <small class="text-muted px-3">Sin actividades programadas para hoy.</small>
               </div>
 
-              <!-- CASO: CON RESERVAS -->
+              
               <div v-else class="list-group list-group-flush flex-grow-1">
                 <div 
                   v-for="reserva in grupo.eventos" 
@@ -284,7 +284,7 @@ onUnmounted(() => {
     border-style: dashed !important;
 }
 
-/* Ajustes finos para inputs */
+
 .form-control:focus, .btn:focus {
   box-shadow: none;
   border-color: #005f86;

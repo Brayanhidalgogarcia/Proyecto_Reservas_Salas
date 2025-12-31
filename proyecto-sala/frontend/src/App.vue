@@ -39,13 +39,7 @@ import { RouterLink, RouterView } from 'vue-router'
                   <span class="ms-1 d-none d-sm-inline">Consultar Reportes</span>
                 </RouterLink>
               </li>
-              <!--
-              <li class="nav-item w-100">
-                <RouterLink to="/alta-usuario" class="nav-link px-0 align-middle text-dark">
-                  <span class="ms-1 d-none d-sm-inline">Dar de Alta Usuario</span>
-                </RouterLink>
-              </li>
-              -->
+              
             </ul>
           </div>
         </div>

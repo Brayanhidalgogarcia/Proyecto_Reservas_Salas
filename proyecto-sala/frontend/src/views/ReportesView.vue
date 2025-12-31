@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue';
 import ApiService from '@/services/ApiService.js';
 import * as XLSX from 'xlsx';
 
-// --- NUEVOS IMPORTS PARA PDF ---
+
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -19,22 +19,22 @@ import {
 } from 'chart.js';
 import { Bar, Pie } from 'vue-chartjs';
 
-// Registrar componentes de Chart.js
+
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
-// --- Estado ---
+
 const reservas = ref([]);
 const salas = ref([]);
 const cargando = ref(false);
-const cargandoPDF = ref(false); // Estado para el botón de PDF
+const cargandoPDF = ref(false); 
 const error = ref(null);
 
-// Filtros
+
 const fechaInicio = ref('');
 const fechaFin = ref('');
 const salaSeleccionada = ref('');
 
-// Estadísticas Calculadas
+
 const stats = ref({
     salaTop: 'N/A',
     maestroTop: 'N/A',
@@ -44,25 +44,25 @@ const stats = ref({
     diaPico: 'N/A'
 });
 
-// Datos para Gráficos
+
 const chartDataSalas = ref({ labels: [], datasets: [] });
 const chartDataDias = ref({ labels: [], datasets: [] });
 const chartOptions = { responsive: true, maintainAspectRatio: false };
 
-// --- Carga inicial ---
+
 onMounted(async () => {
   try {
     const responseSalas = await ApiService.obtenerSalas();
     salas.value = responseSalas.data || responseSalas;
     
-    // Fechas por defecto: Mes actual
+  
     const hoy = new Date();
-    // Primer día del mes
+   
     const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    // Último día del mes
+ 
     const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     
-    // Formato YYYY-MM-DD local
+   
     const offset = primerDia.getTimezoneOffset() * 60000;
     fechaInicio.value = new Date(primerDia - offset).toISOString().split('T')[0];
     fechaFin.value = new Date(ultimoDia - offset).toISOString().split('T')[0];
@@ -73,14 +73,14 @@ onMounted(async () => {
   }
 });
 
-// --- Generar Reporte (Lógica de Filtrado Local) ---
+
 async function generarReporte() {
   cargando.value = true;
   error.value = null;
   reservas.value = [];
 
   try {
-    // 1. Obtenemos TODAS las reservas (sin filtros al backend para evitar errores de API)
+  
     const response = await ApiService.obtenerReservas();
     const todosLosDatos = response.data || response;
 
@@ -88,26 +88,25 @@ async function generarReporte() {
         throw new Error("El formato de respuesta de reservas no es una lista válida.");
     }
 
-    // 2. Preparamos fechas de filtro (Inicio a las 00:00, Fin a las 23:59)
-    // Usamos string comparison para evitar problemas de zona horaria simples
+    
     const fInicio = fechaInicio.value; 
     const fFin = fechaFin.value;
 
-    // 3. Filtramos manualmente en el Frontend
+    
     reservas.value = todosLosDatos.filter(r => {
-        // Extraemos la parte de la fecha YYYY-MM-DD de la reserva
+        
         const fechaReserva = r.inicio ? r.inicio.split('T')[0] : '';
         
-        // A) Filtro de Fecha
+       
         const enRango = fechaReserva >= fInicio && fechaReserva <= fFin;
         
-        // B) Filtro de Sala (si está seleccionada)
+        
         let coincideSala = true;
         if (salaSeleccionada.value) {
             const idSalaReserva = (typeof r.sala === 'object') ? r.sala.id : r.sala;
-            // Comparamos como string por si acaso
+            
             coincideSala = String(idSalaReserva) === String(salaSeleccionada.value);
-            // También intentamos comparar por clave si la API devuelve objetos distintos
+            
             if (!coincideSala && typeof r.sala === 'object') {
                 coincideSala = r.sala.clave_sala === salaSeleccionada.value;
             }
@@ -116,7 +115,7 @@ async function generarReporte() {
         return enRango && coincideSala;
     });
     
-    // Una vez tenemos los datos filtrados, calculamos las estadísticas
+    
     calcularEstadisticas();
     prepararGraficos();
 
@@ -128,60 +127,60 @@ async function generarReporte() {
   }
 }
 
-// --- Lógica de Negocio: Cálculo de Estadísticas ---
+
 function calcularEstadisticas() {
     if (reservas.value.length === 0) {
         resetStats();
         return;
     }
 
-    // 1. Contadores
+    
     const conteoSalas = {};
     const conteoMaestros = {};
     const conteoMaterias = {};
-    const conteoDias = { 0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0 }; // Dom-Sab
+    const conteoDias = { 0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0 }; 
     let totalHoras = 0;
 
     reservas.value.forEach(r => {
-        // Normalizar nombres
+        
         const s = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala_nombre || r.sala || 'Desconocido');
         const m = r.maestro_nombre || r.maestro || 'Desconocido';
         const mat = r.asignatura_nombre || r.asignatura || 'Desconocido';
         
-        // Contar
+        
         conteoSalas[s] = (conteoSalas[s] || 0) + 1;
         conteoMaestros[m] = (conteoMaestros[m] || 0) + 1;
         conteoMaterias[mat] = (conteoMaterias[mat] || 0) + 1;
 
-        // Horas
+        
         const inicio = new Date(r.inicio);
         const fin = new Date(r.fin);
-        const duracion = (fin - inicio) / (1000 * 60 * 60); // en horas
+        const duracion = (fin - inicio) / (1000 * 60 * 60); 
         if (!isNaN(duracion)) {
             totalHoras += duracion;
         }
 
-        // Día de la semana
+        
         const diaSemana = inicio.getDay(); 
         conteoDias[diaSemana]++;
     });
 
-    // 2. Encontrar los ganadores (Top)
+    
     stats.value.salaTop = getKeyWithMaxVal(conteoSalas);
     stats.value.maestroTop = getKeyWithMaxVal(conteoMaestros);
     stats.value.materiaTop = getKeyWithMaxVal(conteoMaterias);
     stats.value.horasTotales = totalHoras.toFixed(1);
 
-    // 3. Día Pico
+    
     const diasNombres = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
     const diaIndex = Object.keys(conteoDias).reduce((a, b) => conteoDias[a] > conteoDias[b] ? a : b);
     stats.value.diaPico = diasNombres[diaIndex];
 
-    // 4. Tasa de Ocupación (Estimada)
+    
     const start = new Date(fechaInicio.value);
     const end = new Date(fechaFin.value);
     const diasDiferencia = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
-    const capacidadTotalHoras = diasDiferencia * 8 * (salas.value.length || 1); // 8 horas laborales
+    const capacidadTotalHoras = diasDiferencia * 8 * (salas.value.length || 1); 
     
     stats.value.tasaOcupacion = ((totalHoras / capacidadTotalHoras) * 100).toFixed(1) + '%';
 }
@@ -201,7 +200,7 @@ function resetStats() {
 function prepararGraficos() {
     if (reservas.value.length === 0) return;
 
-    // A) Gráfico de Barras: Uso por Sala
+    
     const conteoSalas = {};
     reservas.value.forEach(r => {
         const s = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala_nombre || r.sala || 'Desconocido');
@@ -217,14 +216,14 @@ function prepararGraficos() {
         }]
     };
 
-    // B) Gráfico de Pastel: Distribución por Materia
+    
     const conteoMat = {};
     reservas.value.forEach(r => {
         const m = r.asignatura_nombre || r.asignatura || 'Otros';
         conteoMat[m] = (conteoMat[m] || 0) + 1;
     });
     
-    // Top 5
+    
     const top5 = Object.entries(conteoMat).sort((a,b) => b[1]-a[1]).slice(0, 5);
     
     chartDataDias.value = {
@@ -236,12 +235,12 @@ function prepararGraficos() {
     };
 }
 
-// --- Exportar a Excel ---
+
 function descargarExcel() {
   if (reservas.value.length === 0) return;
 
   const datosParaExcel = reservas.value.map(reserva => {
-      // Manejo seguro de nombres
+      
       const salaStr = (typeof reserva.sala === 'object') ? (reserva.sala.nombre_sala || reserva.sala.nombre) : (reserva.sala_nombre || reserva.sala);
       
       return {
@@ -261,35 +260,35 @@ function descargarExcel() {
   XLSX.writeFile(libro, `Reporte_Salas_UJAT_${fechaHoy}.xlsx`);
 }
 
-// --- NUEVA FUNCIÓN: Descargar PDF ---
+
 const descargarPDF = async () => {
-    // Validar si hay datos
+    
     if (reservas.value.length === 0) return;
 
     cargandoPDF.value = true;
     
-    // Seleccionamos el contenedor que queremos "fotografiar"
+    
     const elemento = document.getElementById('reporte-imprimible');
     
     if (elemento) {
         try {
-            // 1. Convertir HTML a Canvas (Imagen)
+            
             const canvas = await html2canvas(elemento, {
-                scale: 2, // Mejor resolución
-                useCORS: true // Por si hay imágenes externas
+                scale: 2, 
+                useCORS: true 
             });
 
-            // 2. Crear PDF
+            
             const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4'); // p = portrait, mm = milímetros, a4 = tamaño
+            const pdf = new jsPDF('p', 'mm', 'a4'); 
             
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
             
-            // 3. Agregar imagen al PDF
-            pdf.addImage(imgData, 'PNG', 0, 10, pdfWidth, pdfHeight); // 10mm de margen superior
             
-            // 4. Descargar
+            pdf.addImage(imgData, 'PNG', 0, 10, pdfWidth, pdfHeight); 
+            
+            
             const fechaHoy = new Date().toISOString().split('T')[0];
             pdf.save(`Reporte_Grafico_UJAT_${fechaHoy}.pdf`);
             
@@ -302,7 +301,7 @@ const descargarPDF = async () => {
     }
 };
 
-// --- Utilidades ---
+
 function formatDateTime(dateTimeString) {
   if (!dateTimeString) return 'N/A';
   const dt = new Date(dateTimeString);
@@ -317,7 +316,7 @@ function formatDateTime(dateTimeString) {
             <i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Reporte de Uso
         </h2>
         
-        <!-- Grupo de Botones de Exportación -->
+        
         <div v-if="reservas.length > 0">
             <button @click="descargarExcel" class="btn btn-success me-2">
                 <i class="bi bi-file-earmark-excel me-1"></i> Excel
@@ -330,7 +329,7 @@ function formatDateTime(dateTimeString) {
         </div>
     </div>
 
-    <!-- 1. Panel de Filtros -->
+   
     <div class="card mb-4 shadow-sm border-0">
       <div class="card-body bg-light rounded">
         <div class="row g-3 align-items-end">
@@ -346,7 +345,7 @@ function formatDateTime(dateTimeString) {
             <label class="form-label small fw-bold text-muted">Sala (Opcional)</label>
             <select v-model="salaSeleccionada" class="form-select">
               <option value="">Todas las salas</option>
-              <!-- Ajuste de clave/id para el select -->
+             
               <option v-for="sala in salas" :key="sala.id || sala.clave_sala" :value="sala.id || sala.clave_sala">
                 {{ sala.nombre_sala || sala.nombre }}
               </option>
@@ -364,10 +363,10 @@ function formatDateTime(dateTimeString) {
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
-    <!-- CONTENEDOR PARA IMPRESIÓN (ID ÚNICO) -->
+    
     <div id="reporte-imprimible" class="bg-white p-3 rounded" v-if="!cargando && reservas.length > 0">
         
-        <!-- 2. Tarjetas de KPI -->
+        
         <div class="row g-4 mb-4">
             <div class="col-md-3">
                 <div class="card h-100 border-0 shadow-sm border-start border-4 border-primary">
@@ -404,7 +403,7 @@ function formatDateTime(dateTimeString) {
             </div>
         </div>
 
-        <!-- 3. Sección de Gráficos -->
+       
         <div class="row mb-4">
             <div class="col-md-8">
                 <div class="card shadow-sm border-0 h-100">
@@ -424,7 +423,7 @@ function formatDateTime(dateTimeString) {
             </div>
         </div>
 
-        <!-- 4. Tabla Detallada -->
+       
         <div class="card shadow-sm border-0">
         <div class="card-header bg-white fw-bold">Detalle de Registros</div>
         <div class="table-responsive">

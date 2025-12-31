@@ -72,8 +72,7 @@ class ReservaSerializer(serializers.ModelSerializer):
         fields = ['id', 'maestro', 'asignatura', 'sala', 'division', 'tema', 'inicio', 'fin', 'fecha_apartado']
 
     def to_representation(self, instance):
-        # Mantenemos esto EXACTAMENTE como te funcionaba antes.
-        # No agregamos 'sala_id' extra para evitar el error de atributo.
+        
         response = super().to_representation(instance)
         
         response['maestro'] = str(instance.maestro)
@@ -91,14 +90,13 @@ class ReservaSerializer(serializers.ModelSerializer):
         inicio = data.get('inicio')
         fin = data.get('fin')
 
-        # 1. Validación de coherencia
+        
         if inicio >= fin:
             raise serializers.ValidationError({
                 "detail": "La hora de inicio debe ser anterior a la hora de fin."
             })
 
-        # 2. Validación de Horario (08:00 - 16:00)
-        # Convertimos a hora local para verificar correctamente
+       
         if timezone.is_naive(inicio):
             inicio = timezone.make_aware(inicio)
         if timezone.is_naive(fin):
@@ -116,7 +114,7 @@ class ReservaSerializer(serializers.ModelSerializer):
                 "detail": "El horario de servicio es exclusivamente de 08:00 a 16:00."
             })
 
-        # 3. Validación de SOLAPAMIENTO
+       
         qs = Reserva.objects.filter(
             sala=sala,
             inicio__lt=fin,
@@ -129,14 +127,14 @@ class ReservaSerializer(serializers.ModelSerializer):
         if qs.exists():
             conflicto = qs.first()
             
-            # Formato de hora amigable para el mensaje de error
+           
             inicio_mx = timezone.localtime(conflicto.inicio)
             fin_mx = timezone.localtime(conflicto.fin)
             
             h_ini = inicio_mx.strftime('%H:%M')
             h_fin = fin_mx.strftime('%H:%M')
             
-            # Usamos 'detail' para que tu Frontend lo muestre en la alerta roja
+            
             raise serializers.ValidationError({
                 "detail": f"Conflicto: La sala ya está ocupada por {conflicto.maestro} de {h_ini} a {h_fin}."
             })

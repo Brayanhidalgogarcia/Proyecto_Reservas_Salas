@@ -47,11 +47,11 @@ export default {
     return apiClient.delete(`/divisiones/${claveDivision}/`);
   },
 
-  // --- Métodos para Asignaturas ---
+  
   obtenerAsignaturas() {
     return apiClient.get('/asignaturas/');
   },
-  obtenerAsignatura(claveAsignatura) { // La PK es la clave
+  obtenerAsignatura(claveAsignatura) { 
     return apiClient.get(`/asignaturas/${claveAsignatura}/`);
   },
   crearAsignatura(datosAsignatura) {
@@ -64,11 +64,10 @@ export default {
     return apiClient.delete(`/asignaturas/${claveAsignatura}/`);
   },
 
-  // --- Métodos para Salas ---
   obtenerSalas() {
     return apiClient.get('/salas/');
   },
-  obtenerSala(claveSala) { // La PK es la clave
+  obtenerSala(claveSala) { 
     return apiClient.get(`/salas/${claveSala}/`);
   },
   crearSala(datosSala) {
@@ -81,11 +80,11 @@ export default {
     return apiClient.delete(`/salas/${claveSala}/`);
   },
 
-  // --- Métodos para Maestros ---
+
   obtenerMaestros() {
     return apiClient.get('/maestros/');
   },
-  obtenerMaestro(matriculaM) { // La PK es la matrícula
+  obtenerMaestro(matriculaM) { 
     return apiClient.get(`/maestros/${matriculaM}/`);
   },
   crearMaestro(datosMaestro) {
@@ -100,7 +99,7 @@ export default {
 
  
   obtenerReservas(filtros = {}) {
-    // Convierte el objeto { clave: valor } a string de URL "clave=valor&..."
+    
     const params = new URLSearchParams(filtros).toString();
     return apiClient.get(`/reservas/?${params}`);
   },
