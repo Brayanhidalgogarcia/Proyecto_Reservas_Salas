@@ -6,6 +6,7 @@ from .serializers import (
     MaestroSerializer, ReservaSerializer, UsuarioSerializer,ReporteSerializer
 )
 from datetime import datetime
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser
 
 # --- VISTAS DE CATÁLOGOS ---
@@ -42,33 +43,46 @@ class ReservaViewSet(viewsets.ModelViewSet):
     serializer_class = ReservaSerializer
 
     def perform_create(self, serializer):
-        
-        serializer.save(creado_por=self.request.user)
+        user = self.request.user
 
-   
-    def destroy(self, request, *args, **kwargs):
+        # --- BLINDAJE DE SEGURIDAD ---
         
+        if user.is_superuser:
+            # CASO 1: EL JEFE (ADMIN)
+            # Confiamos en él. Si eligió un maestro en el formulario, lo respetamos.
+            # Solo añadimos la firma de "creado_por".
+            serializer.save(creado_por=user)
+        else:
+            # CASO 2: EL MAESTRO (USUARIO MORTAL)
+            # No confiamos en lo que envíe en el campo 'maestro'. 
+            # Forzamos que la reserva sea para SU perfil vinculado.
+            
+            # Verificamos si existe el vínculo que creamos en models.py (related_name='perfil_maestro')
+            if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
+                serializer.save(
+                    creado_por=user,
+                    maestro=user.perfil_maestro  # <--- AQUÍ ESTÁ EL CANDADO: Sobreescribimos el maestro
+                )
+            else:
+                # Si el usuario existe pero no está vinculado a ningún maestro, bloqueamos la acción.
+                raise ValidationError({"detail": "Error de Seguridad: Tu usuario no está vinculado a un perfil de Maestro válido."})
+
+    def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         
-      
         es_admin = request.user.is_superuser
         es_dueno = instance.creado_por == request.user
         
-       
         if not (es_admin or es_dueno):
-           
             return Response(
                 {"detail": "No tienes permiso para eliminar esta reserva. Solo el autor o un administrador pueden hacerlo."}, 
                 status=status.HTTP_403_FORBIDDEN
             )
             
-    
         return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
-       
         queryset = Reserva.objects.all().order_by('-inicio') 
-
         
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         fecha_fin = self.request.query_params.get('fecha_fin')
