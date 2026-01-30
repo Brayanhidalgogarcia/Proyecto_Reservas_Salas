@@ -2,563 +2,485 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
-
+// --- CONFIGURACIÓN ---
 const HORARIO_APERTURA = 8;
-const HORARIO_CIERRE = 16;  
+const HORARIO_CIERRE = 16;
 
+// --- ESTADO DEL USUARIO ---
+const currentUserId = ref(null);
+const isSuperUser = ref(false);
+const nombreUsuarioLogueado = ref('Usuario'); // NUEVO: Para mostrar en el input bloqueado
 
+// --- ESTADO DEL FORMULARIO ---
 const nuevaReserva = ref({
   maestro: null,
   asignatura: null,
   sala: null,
-  tema: '',
-  fecha: new Date().toISOString().split('T')[0], 
+  tema: '', 
+  fecha: new Date().toISOString().split('T')[0],
   inicio: '',
   fin: ''     
 });
 
-
+// Listas de datos
 const maestros = ref([]);
 const asignaturas = ref([]);
 const salas = ref([]);
+const reservasExistentes = ref([]);
 
-
-const reservasExistentes = ref([]); 
+// Estado UI
 const cargando = ref(false);
 const enviando = ref(false);
 const error = ref(null);
 const mensajeExito = ref(null);
 
-
 let socket = null;
 
+// ----------------------------------------------------------------------
+// 1. SEGURIDAD Y PERMISOS
+// ----------------------------------------------------------------------
 
-async function cargarDatosIniciales() {
-  cargando.value = true;
-  error.value = null;
-  try {
-    
-    const [resMaestros, resAsignaturas, resSalas] = await Promise.all([
-      ApiService.obtenerMaestros(),
-      ApiService.obtenerAsignaturas(),
-      ApiService.obtenerSalas()
-    ]);
-    
-    
-    maestros.value = resMaestros.data || resMaestros;
-    asignaturas.value = resAsignaturas.data || resAsignaturas;
-    salas.value = resSalas.data || resSalas;
-
-    
-    await cargarReservasTabla();
-
-  } catch (err) {
-    console.error(err);
-    error.value = 'Error al cargar datos. Verifica la conexión con el Backend.';
-  } finally {
-    cargando.value = false;
-  }
-}
-
-
-async function cargarReservasTabla() {
+function obtenerIdDesdeToken() {
+    const token = localStorage.getItem('access') || localStorage.getItem('token');
+    if (!token) return null;
     try {
-        const response = await fetch('http://127.0.0.1:8000/api/v1/reservas/');
-        if (response.ok) {
-            const data = await response.json();
-            
-            reservasExistentes.value = data.map(r => {
-                
-                const fechaStr = r.inicio ? r.inicio.split('T')[0] : '';
-                
-                
-                const inicioStr = r.inicio ? new Date(r.inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false}) : '';
-                const finStr = r.fin ? new Date(r.fin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false}) : '';
-
-                
-                let nombreSalaReal = 'Sala desconocida';
-                let idSalaReal = null;
-
-                if (r.sala && typeof r.sala === 'object') {
-                    nombreSalaReal = r.sala.nombre_sala || r.sala.nombre;
-                    idSalaReal = r.sala.id;
-                } else {
-                    nombreSalaReal = String(r.sala);
-                }
-
-                return {
-                    id: r.id,
-                    salaId: idSalaReal, 
-                    salaNombre: nombreSalaReal,
-                    fecha: fechaStr,
-                    inicio: inicioStr,
-                    fin: finStr,
-                    raw: r,
-                    maestro: r.maestro_nombre || r.maestro || 'Desconocido',
-                    tema: r.tema,
-                    asignatura: r.asignatura
-                };
-            });
-        }
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        return JSON.parse(jsonPayload).user_id;
     } catch (e) {
-        console.error("Error actualizando tabla:", e);
+        return null;
     }
 }
 
+async function cargarIdentidad() {
+    let uid = localStorage.getItem('user_id');
+    let isSuper = localStorage.getItem('is_superuser');
 
+    if (!uid) uid = obtenerIdDesdeToken();
+
+    currentUserId.value = uid;
+    isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
+}
+
+function tengoPermisoBorrar(reserva) {
+    if (isSuperUser.value) return true;
+    if (!currentUserId.value || !reserva.creadoPor) return false;
+    return String(currentUserId.value) === String(reserva.creadoPor);
+}
+
+// ----------------------------------------------------------------------
+// 2. CARGA DE DATOS
+// ----------------------------------------------------------------------
+
+async function cargarDatos() {
+    cargando.value = true;
+    error.value = null;
+
+    await cargarIdentidad();
+
+    try {
+        const [resMaestros, resAsignaturas, resSalas, resReservas] = await Promise.all([
+            ApiService.obtenerMaestros(),
+            ApiService.obtenerAsignaturas(),
+            ApiService.obtenerSalas(),
+            ApiService.obtenerReservas()
+        ]);
+
+        maestros.value = resMaestros.data || resMaestros;
+        asignaturas.value = resAsignaturas.data || resAsignaturas;
+        salas.value = resSalas.data || resSalas;
+        
+        const dataReservas = resReservas.data || resReservas;
+        
+        // --- LÓGICA DE AUTOSELECCIÓN (NUEVO) ---
+        if (!isSuperUser.value && currentUserId.value) {
+            // Buscamos al maestro cuyo ID coincida con el usuario logueado
+            // Se compara como String para evitar errores de tipo (num vs str)
+            const maestroEncontrado = maestros.value.find(m => 
+                String(m.id) === String(currentUserId.value) || 
+                String(m.matricula_m) === String(currentUserId.value)
+            );
+
+            if (maestroEncontrado) {
+                // Lo seleccionamos automáticamente
+                nuevaReserva.value.maestro = maestroEncontrado.id || maestroEncontrado.matricula_m;
+                // Preparamos el nombre para mostrarlo en el input bloqueado
+                nombreUsuarioLogueado.value = `${maestroEncontrado.nombre} ${maestroEncontrado.apellido_p}`;
+            } else {
+                console.warn("Usuario logueado no encontrado en lista de maestros");
+            }
+        }
+        
+        reservasExistentes.value = dataReservas.map(r => {
+            let sId = null;
+            let sNombre = 'Sala';
+            
+            if (r.sala && typeof r.sala === 'object') {
+                sId = r.sala.id;
+                sNombre = r.sala.nombre_sala || r.sala.nombre;
+            } else {
+                sNombre = String(r.sala);
+                const match = salas.value.find(s => s.nombre_sala === sNombre);
+                if (match) sId = match.id || match.clave_sala;
+            }
+
+            return {
+                id: r.id,
+                salaId: sId,
+                salaNombre: sNombre,
+                maestro: r.maestro_nombre || r.maestro,
+                inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) : '',
+                finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) : '',
+                fecha: r.inicio ? r.inicio.split('T')[0] : '',
+                creadoPor: r.creado_por_id 
+            };
+        });
+
+    } catch (e) {
+        console.error(e);
+        error.value = "Error de conexión con el servidor.";
+    } finally {
+        cargando.value = false;
+    }
+}
+
+// ----------------------------------------------------------------------
+// 3. LÓGICA DE NEGOCIO (RESTRICCIONES)
+// ----------------------------------------------------------------------
 
 const minFecha = computed(() => new Date().toISOString().split('T')[0]);
 
+const obtenerOcupacionesSala = () => {
+    if (!nuevaReserva.value.sala || !nuevaReserva.value.fecha) return [];
+    
+    // Comparación laxa (==) para soportar string vs number
+    const salaObj = salas.value.find(s => (s.id || s.clave_sala) == nuevaReserva.value.sala);
+    const nombreObj = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
 
-const generarHoras = () => {
-    const horas = [];
-    for (let i = HORARIO_APERTURA; i <= HORARIO_CIERRE; i++) {
-        horas.push(`${String(i).padStart(2, '0')}:00`);
-    }
-    return horas;
+    return reservasExistentes.value.filter(r => {
+        const mismaSala = (r.salaId == nuevaReserva.value.sala) || (r.salaNombre === nombreObj);
+        return mismaSala && r.fecha === nuevaReserva.value.fecha;
+    });
 };
 
+const opcionesInicio = computed(() => {
+    let horas = [];
+    for(let i=HORARIO_APERTURA; i<HORARIO_CIERRE; i++) {
+        horas.push(`${String(i).padStart(2,'0')}:00`);
+    }
 
-const opcionesHoraInicio = computed(() => {
-    let horas = generarHoras();
-    
-    
     if (nuevaReserva.value.fecha === minFecha.value) {
         const horaActual = new Date().getHours();
         horas = horas.filter(h => parseInt(h.split(':')[0]) > horaActual);
     }
 
-    
     if (nuevaReserva.value.sala) {
-        
-        const salaObj = salas.value.find(s => (s.id || s.clave_sala) === nuevaReserva.value.sala);
-        const nombreSala = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
-
-        
-        const ocupaciones = reservasExistentes.value.filter(r => {
-            const coincideSala = (r.salaId === nuevaReserva.value.sala) || (String(r.salaNombre) === String(nombreSala));
-            return coincideSala && r.fecha === nuevaReserva.value.fecha;
-        });
-
-        
+        const ocupaciones = obtenerOcupacionesSala();
         horas = horas.filter(h => {
-            
-            const estaOcupada = ocupaciones.some(r => h >= r.inicio && h < r.fin);
-            return !estaOcupada;
+            return !ocupaciones.some(r => h >= r.inicioFmt && h < r.finFmt);
         });
     }
 
-    
-    return horas.filter(h => parseInt(h.split(':')[0]) < HORARIO_CIERRE);
+    return horas;
 });
 
-
-
-const opcionesHoraFin = computed(() => {
-    let horas = generarHoras();
-    if (!nuevaReserva.value.inicio) return [];
+const opcionesFin = computed(() => {
+    if(!nuevaReserva.value.inicio) return [];
     
-    
+    let horas = [];
+    for(let i=HORARIO_APERTURA + 1; i<=HORARIO_CIERRE; i++) {
+        horas.push(`${String(i).padStart(2,'0')}:00`);
+    }
+
     horas = horas.filter(h => h > nuevaReserva.value.inicio);
 
-    
     if (nuevaReserva.value.sala) {
-        const salaObj = salas.value.find(s => (s.id || s.clave_sala) === nuevaReserva.value.sala);
-        const nombreSala = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
+        const ocupaciones = obtenerOcupacionesSala();
+        const reservasFuturas = ocupaciones
+            .filter(r => r.inicioFmt >= nuevaReserva.value.inicio)
+            .sort((a, b) => a.inicioFmt.localeCompare(b.inicioFmt));
 
-        const ocupaciones = reservasExistentes.value.filter(r => {
-            const coincideSala = (r.salaId === nuevaReserva.value.sala) || (String(r.salaNombre) === String(nombreSala));
-            return coincideSala && r.fecha === nuevaReserva.value.fecha;
-        });
-
-        
-        const reservasFuturas = ocupaciones.filter(r => r.inicio >= nuevaReserva.value.inicio);
-        
         if (reservasFuturas.length > 0) {
-            
-            reservasFuturas.sort((a, b) => a.inicio.localeCompare(b.inicio));
-            const siguienteReserva = reservasFuturas[0];
-            
-            
-            horas = horas.filter(h => h <= siguienteReserva.inicio);
+            const siguienteInicio = reservasFuturas[0].inicioFmt;
+            horas = horas.filter(h => h <= siguienteInicio);
         }
     }
 
     return horas;
 });
 
-
-const estadoSalasDiaSeleccionado = computed(() => {
+const estadoSalas = computed(() => {
     const dia = nuevaReserva.value.fecha;
     if (!dia) return [];
 
-    const ahora = new Date();
-    const esHoy = dia === minFecha.value;
-    const horaActual = esHoy ? ahora.getHours() : 0;
-
     return salas.value.map(sala => {
-        const idSala = sala.id || sala.clave_sala;
-        const nombreSala = sala.nombre_sala || sala.nombre;
+        const id = sala.id || sala.clave_sala;
+        const nombre = sala.nombre_sala || sala.nombre;
 
-        
         const ocupaciones = reservasExistentes.value.filter(r => {
-            const coincideSala = (r.salaId == idSala) || (r.salaNombre === nombreSala);
-            const coincideFecha = r.fecha === dia;
-            
-            
-            const finHoraNum = parseInt(r.fin.split(':')[0]); 
-            const esFutura = !esHoy || (finHoraNum > horaActual);
-
-            
-            
-            return coincideSala && coincideFecha && esFutura; 
+            const matchId = r.salaId && r.salaId == id;
+            const matchNombre = r.salaNombre === nombre;
+            return (matchId || matchNombre) && r.fecha === dia;
         });
 
-        
-        const todasReservasDia = reservasExistentes.value.filter(r => {
-            const coincideSala = (r.salaId == idSala) || (r.salaNombre === nombreSala);
-            return coincideSala && r.fecha === dia;
+        ocupaciones.sort((a, b) => a.inicioFmt.localeCompare(b.inicioFmt));
+
+        const reservaParaCancelar = ocupaciones.find(r => tengoPermisoBorrar(r));
+
+        let horasOcupadas = 0;
+        ocupaciones.forEach(r => {
+            const hIni = parseInt(r.inicioFmt.split(':')[0]);
+            const hFin = parseInt(r.finFmt.split(':')[0]);
+            horasOcupadas += (hFin - hIni);
         });
-
-        let horasTotalesOcupadas = 0;
-        todasReservasDia.forEach(r => {
-            const ini = parseInt(r.inicio.split(':')[0]);
-            const fin = parseInt(r.fin.split(':')[0]);
-            horasTotalesOcupadas += (fin - ini);
-        });
-
-        const turnoTotal = HORARIO_CIERRE - HORARIO_APERTURA;
-        const esAgotada = horasTotalesOcupadas >= turnoTotal;
-
-        ocupaciones.sort((a, b) => a.inicio.localeCompare(b.inicio));
 
         return {
-            id: idSala,
-            nombre: nombreSala,
-            ocupado: ocupaciones.length > 0, 
-            horariosOcupados: ocupaciones.map(o => `${o.inicio} - ${o.fin}`),
-            agotada: esAgotada 
+            id: id,
+            nombre: nombre,
+            ocupado: ocupaciones.length > 0,
+            reservas: ocupaciones,
+            agotada: horasOcupadas >= (HORARIO_CIERRE - HORARIO_APERTURA),
+            idCancelable: reservaParaCancelar ? reservaParaCancelar.id : null,
+            descCancelable: reservaParaCancelar ? `${reservaParaCancelar.inicioFmt} - ${reservaParaCancelar.finFmt}` : ''
         };
     });
 });
 
-function seleccionarSala(idSala) {
-    nuevaReserva.value.sala = idSala;
-}
+// ----------------------------------------------------------------------
+// 4. ACCIONES
+// ----------------------------------------------------------------------
 
+async function crearReserva() {
+    error.value = null;
 
+    const f = nuevaReserva.value;
 
-async function agregarReserva() {
-  enviando.value = true;
-  error.value = null;
-  mensajeExito.value = null;
+    // VALIDACIÓN:
+    // Verifica si es null, undefined o string vacío. Acepta el número 0.
+    const esInvalido = (v) => v === null || v === undefined || v === '';
 
-  
-  if (!nuevaReserva.value.maestro || !nuevaReserva.value.asignatura || !nuevaReserva.value.sala) {
-      error.value = 'Por favor selecciona Sala, Maestro y Asignatura obligatoriamente.';
-      enviando.value = false;
-      return;
-  }
-
-  
-  if (nuevaReserva.value.fecha < minFecha.value) {
-      error.value = 'No puedes reservar en el pasado.';
-      enviando.value = false;
-      return;
-  }
-
- 
-  if (nuevaReserva.value.inicio >= nuevaReserva.value.fin) {
-      error.value = 'La hora de inicio debe ser antes de la hora de fin.';
-      enviando.value = false;
-      return;
-  }
-
-  
-  const conflicto = reservasExistentes.value.find(r => {
-      const mismaSala = String(r.salaId) == String(nuevaReserva.value.sala);
-      const mismaFecha = r.fecha === nuevaReserva.value.fecha;
-      
-      if (!mismaSala || !mismaFecha) return false;
-
-      const hayChoque = (nuevaReserva.value.inicio < r.fin) && (nuevaReserva.value.fin > r.inicio);
-      return hayChoque;
-  });
-
-  if (conflicto) {
-      error.value = `¡Conflicto! La sala ya está ocupada de ${conflicto.inicio} a ${conflicto.fin}.`;
-      enviando.value = false;
-      return;
-  }
-
-  const inicioISO = `${nuevaReserva.value.fecha}T${nuevaReserva.value.inicio}:00`;
-  const finISO = `${nuevaReserva.value.fecha}T${nuevaReserva.value.fin}:00`;
-
-  const datosParaAPI = {
-    maestro: nuevaReserva.value.maestro,
-    asignatura: nuevaReserva.value.asignatura,
-    sala: nuevaReserva.value.sala,
-    tema: nuevaReserva.value.tema,
-    inicio: inicioISO,
-    fin: finISO
-  };
-
-  try {
-    await ApiService.crearReserva(datosParaAPI);
-    mensajeExito.value = '¡Reserva creada con éxito!';
+    if (esInvalido(f.fecha)) { error.value = "La FECHA es obligatoria."; return; }
+    if (esInvalido(f.maestro)) { error.value = "Debes seleccionar un MAESTRO."; return; } // Esta validación sigue siendo necesaria para evitar envíos vacíos
+    if (esInvalido(f.sala)) { error.value = "Debes seleccionar una SALA."; return; }
+    if (esInvalido(f.asignatura)) { error.value = "Debes seleccionar una ASIGNATURA."; return; }
+    if (esInvalido(f.inicio)) { error.value = "La hora de INICIO es obligatoria."; return; }
+    if (esInvalido(f.fin)) { error.value = "La hora de FIN es obligatoria."; return; }
     
-    
-    nuevaReserva.value = { 
-        ...nuevaReserva.value, 
-        maestro: null, 
-        asignatura: null, 
-        sala: null, 
-        tema: '', 
-        inicio: '', 
-        fin: '' 
-    };
-  } catch (err) {
-    const msg = err.response?.data?.non_field_errors?.[0] || err.response?.data?.detail || err.message;
-    error.value = 'Error al crear la reserva: ' + msg;
-  } finally {
-    enviando.value = false;
-  }
-}
+    // TEMA es opcional, no se valida.
 
-
-async function cancelarReserva(id) {
-    if(!confirm("¿Deseas cancelar esta reserva?")) return;
-
+    enviando.value = true;
     try {
-        const response = await fetch(`http://127.0.0.1:8000/api/v1/reservas/${id}/`, {
-            method: 'DELETE',
-        });
+        // Normalizamos el tema a null si viene vacío para evitar errores de backend
+        const temaLimpio = f.tema && f.tema.trim() !== '' ? f.tema : null;
+
+        const payload = {
+            ...f,
+            tema: temaLimpio,
+            inicio: `${f.fecha}T${f.inicio}:00`,
+            fin: `${f.fecha}T${f.fin}:00`
+        };
+
+        await ApiService.crearReserva(payload);
+        mensajeExito.value = "Reserva creada con éxito";
         
-        if (!response.ok) {
-            alert("Error al cancelar.");
-        }
-    } catch (e) {
-        console.error(e);
+        // Limpiamos solo campos temporales (Fecha y Maestro se mantienen para comodidad)
+        nuevaReserva.value.inicio = ''; 
+        nuevaReserva.value.fin = '';
+        nuevaReserva.value.tema = ''; 
+        
+        await cargarDatos();
+    } catch(e) {
+        error.value = e.response?.data?.detail || "Error al crear reserva. Verifica conflictos de horario.";
+        console.error("Error reserva:", e);
+    } finally {
+        enviando.value = false;
     }
 }
 
+async function cancelar(id, horarioDesc) {
+    if(!confirm(`¿Estás seguro de cancelar la reserva de ${horarioDesc}?`)) return;
+    
+    try {
+        await ApiService.eliminarReserva(id);
+        mensajeExito.value = "Reserva eliminada";
+        await cargarDatos();
+    } catch(e) {
+        const status = e.response?.status;
+        if(status === 403) alert("⛔ No tienes permiso para borrar esta reserva.");
+        else alert("Error del servidor al intentar borrar.");
+    }
+}
 
-const conectarWebSocket = () => {
-  
-  socket = new WebSocket('ws://127.0.0.1:8000/ws/reservas/');
-  
-  socket.onmessage = () => {
-    console.log("Actualización recibida");
-    cargarReservasTabla();
-  };
-  
-  socket.onclose = () => setTimeout(conectarWebSocket, 3000);
-};
+function seleccionar(id) { nuevaReserva.value.sala = id; }
 
 onMounted(() => {
-  cargarDatosIniciales();
-  conectarWebSocket();
+    cargarDatos();
+    socket = new WebSocket('ws://127.0.0.1:8000/ws/reservas/');
+    socket.onmessage = () => { cargarDatos(); };
 });
-
-onUnmounted(() => {
-  if (socket) socket.close();
-});
+onUnmounted(() => { if(socket) socket.close(); });
 </script>
 
 <template>
-  <div class="container-fluid p-4"> 
+  <div class="container-fluid p-4">
+    
+    <div v-if="error" class="alert alert-danger shadow-sm border-0 d-flex align-items-center">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
+    </div>
+    <div v-if="mensajeExito" class="alert alert-success shadow-sm border-0 d-flex align-items-center">
+        <i class="bi bi-check-circle-fill me-2"></i> {{ mensajeExito }}
+    </div>
+
     <div class="row">
-        
-        <div class="col-lg-5 mb-4">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white fw-bold py-3">
-                    <i class="bi bi-pencil-square me-2 text-primary"></i>Nueva Reservación
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white text-dark fw-bold py-3 border-bottom">
+                    <i class="bi bi-calendar-plus me-2 text-primary"></i>Nueva Reserva
                 </div>
                 <div class="card-body">
-                    
-                    <div v-if="cargando" class="alert alert-light text-center"><span class="spinner-border spinner-border-sm me-2"></span>Cargando datos...</div>
-                    <div v-if="error" class="alert alert-danger py-2 small d-flex align-items-center">
-                        <i class="bi bi-exclamation-octagon-fill me-2"></i>
-                        {{ error }}
-                    </div>
-                    <div v-if="mensajeExito" class="alert alert-success py-2 alert-dismissible fade show small">
-                        {{ mensajeExito }}
-                        <button type="button" class="btn-close" @click="mensajeExito = null"></button>
-                    </div>
-
-                    <form @submit.prevent="agregarReserva">
-                        
-                        <div class="mb-3 p-2 bg-light rounded border">
-                            <label class="form-label fw-bold text-secondary small">FECHA DE USO</label>
-                            <input 
-                                type="date" 
-                                class="form-control fw-bold text-center" 
-                                v-model="nuevaReserva.fecha" 
-                                :min="minFecha"
-                                required
-                            >
-                            <div class="form-text text-muted small text-center">Selecciona el día para ver disponibilidad</div>
+                    <form @submit.prevent="crearReserva">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">FECHA</label>
+                            <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" required>
                         </div>
-
                         
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label small">Maestro</label>
-                                <select class="form-select form-select-sm" v-model="nuevaReserva.maestro" required>
-                                    <option :value="null" disabled>Selecciona...</option>
-                                    <option v-for="m in maestros" :key="m.id || m.matricula_m" :value="m.id || m.matricula_m">
-                                        {{ m.nombre }} {{ m.apellido_p }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small">Sala</label>
-                                <select class="form-select form-select-sm" v-model="nuevaReserva.sala" required>
-                                    <option :value="null" disabled>Selecciona...</option>
-                                    <option v-for="s in salas" :key="s.id || s.clave_sala" :value="s.id || s.clave_sala">
-                                        {{ s.nombre_sala }}
-                                    </option>
-                                </select>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">MAESTRO</label>
+                            
+                            <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
+                                <option :value="null">Seleccionar...</option>
+                                <option v-for="m in maestros" :value="m.id || m.matricula_m">{{ m.nombre }} {{ m.apellido_p }}</option>
+                            </select>
+
+                            <div v-else class="input-group">
+                                <span class="input-group-text bg-light text-primary"><i class="bi bi-person-fill"></i></span>
+                                <input type="text" class="form-control bg-light" :value="nombreUsuarioLogueado" disabled readonly>
                             </div>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label small">Asignatura</label>
-                            <select class="form-select form-select-sm" v-model="nuevaReserva.asignatura" required>
-                                <option :value="null" disabled>Selecciona...</option>
-                                <option v-for="a in asignaturas" :key="a.id || a.clave_asignatura" :value="a.id || a.clave_asignatura">
-                                    {{ a.nombre_asignatura }}
-                                </option>
+                            <label class="form-label small fw-bold text-muted">SALA</label>
+                            <select class="form-select" v-model="nuevaReserva.sala">
+                                <option :value="null">Seleccionar...</option>
+                                <option v-for="s in salas" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
                             </select>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label small">Tema (Opcional)</label>
-                            <input type="text" class="form-control form-control-sm" v-model="nuevaReserva.tema" placeholder="Ej. Proyección">
+                            <label class="form-label small fw-bold text-muted">ASIGNATURA</label>
+                            <select class="form-select" v-model="nuevaReserva.asignatura">
+                                <option :value="null">Seleccionar...</option>
+                                <option v-for="a in asignaturas" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
+                            </select>
                         </div>
 
-                       
-                        <div class="row mb-4">
-                            <label class="form-label fw-bold text-secondary small">HORARIO (08:00 - 16:00)</label>
-                            
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">TEMA <span class="fw-light">(Opcional)</span></label>
+                            <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="Ej. Proyección">
+                        </div>
+
+                        <div class="row g-2">
                             <div class="col-6">
-                                <label class="small text-muted">Inicio</label>
-                                <select 
-                                    class="form-select text-center" 
-                                    v-model="nuevaReserva.inicio" 
-                                    required
-                                >
-                                    <option value="" disabled>--:--</option>
-                                    <option v-for="h in opcionesHoraInicio" :key="h" :value="h">{{ h }}</option>
+                                <label class="form-label small fw-bold text-muted">INICIO</label>
+                                <select class="form-select" v-model="nuevaReserva.inicio">
+                                    <option v-for="h in opcionesInicio" :value="h">{{ h }}</option>
                                 </select>
-                                <div v-if="opcionesHoraInicio.length === 0" class="text-danger x-small mt-1">Sin horarios disponibles.</div>
                             </div>
-                            
                             <div class="col-6">
-                                <label class="small text-muted">Fin</label>
-                                <select 
-                                    class="form-select text-center" 
-                                    v-model="nuevaReserva.fin" 
-                                    required
-                                    :disabled="!nuevaReserva.inicio"
-                                >
-                                    <option value="" disabled>--:--</option>
-                                    <option v-for="h in opcionesHoraFin" :key="h" :value="h">{{ h }}</option>
+                                <label class="form-label small fw-bold text-muted">FIN</label>
+                                <select class="form-select" v-model="nuevaReserva.fin">
+                                    <option v-for="h in opcionesFin" :value="h">{{ h }}</option>
                                 </select>
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100 py-2" :disabled="enviando || cargando">
+                        <button class="btn btn-primary w-100 mt-4 py-2 fw-bold" :disabled="enviando">
                             <span v-if="enviando" class="spinner-border spinner-border-sm me-2"></span>
-                            {{ enviando ? 'Guardando...' : 'Confirmar Reserva' }}
+                            {{ enviando ? 'Reservando...' : 'Confirmar Reserva' }}
                         </button>
                     </form>
                 </div>
             </div>
         </div>
 
-        
-        <div class="col-lg-7">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <div>
-                        <span class="fw-bold text-dark">Estado de Salas</span>
-                        <div class="small text-muted">Fecha: {{ nuevaReserva.fecha }}</div>
-                    </div>
-                    <span class="badge bg-light text-dark border">
-                        <i class="bi bi-clock me-1"></i> 8am - 4pm
-                    </span>
-                </div>
-                
-                <div class="card-body p-0 bg-light">
-                    <div class="list-group list-group-flush">
-                        <div v-if="estadoSalasDiaSeleccionado.length === 0" class="text-center p-4 text-muted">
-                            Cargando información...
-                        </div>
-
-                        <div v-for="sala in estadoSalasDiaSeleccionado" :key="sala.id" class="list-group-item d-flex justify-content-between align-items-center py-3">
-                            <div class="d-flex align-items-center">
-                                
-                                <div 
-                                    class="rounded-circle me-3 d-flex align-items-center justify-content-center text-white fw-bold shadow-sm"
-                                    :class="sala.agotada ? 'bg-danger' : (sala.ocupado ? 'bg-warning' : 'bg-success')" 
-                                    style="width: 45px; height: 45px;"
-                                >
-                                    <i :class="sala.agotada ? 'bi bi-slash-circle' : (sala.ocupado ? 'bi bi-clock-history' : 'bi bi-check-lg')"></i>
-                                </div>
-                                <div>
-                                    <h6 class="mb-0 fw-bold">{{ sala.nombre }}</h6>
-                                    
-                                    
-                                    <div v-if="sala.agotada" class="text-danger small fw-bold">
-                                        AGOTADA
-                                    </div>
-                                    <div v-else-if="!sala.ocupado" class="text-success small">
-                                        Totalmente Libre
-                                    </div>
-                                    <div v-else class="text-muted small">
-                                        <span class="text-danger fw-bold">Ocupado:</span> 
-                                        {{ sala.horariosOcupados.join(', ') }}
-                                    </div>
-                                </div>
-                            </div>
+        <div class="col-lg-8">
+            <div class="row g-3">
+                <div v-for="sala in estadoSalas" :key="sala.id" class="col-md-6">
+                    <div class="card h-100 shadow-sm border border-light" :class="{'bg-light': !sala.ocupado}">
+                        <div class="card-body d-flex flex-column">
                             
-                           
-                            <button 
-                                type="button"
-                                @click="seleccionarSala(sala.id)" 
-                                class="btn btn-sm"
-                                :class="nuevaReserva.sala == sala.id ? 'btn-primary' : 'btn-outline-secondary'"
-                                title="Seleccionar sala"
-                                :disabled="sala.agotada"
-                            >
-                                {{ nuevaReserva.sala == sala.id ? 'Seleccionada' : 'Usar' }}
-                            </button>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
+                                <span class="badge border" 
+                                      :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
+                                    {{ sala.agotada ? 'LLENA' : (sala.ocupado ? 'OCUPADA' : 'LIBRE') }}
+                                </span>
+                            </div>
+
+                            <div class="flex-grow-1 mb-3">
+                                <div v-if="!sala.ocupado" class="text-center text-muted py-3 small">
+                                    <i class="bi bi-check2-circle d-block fs-4 mb-1 text-success opacity-50"></i>
+                                    Disponible todo el día
+                                </div>
+                                <ul v-else class="list-group list-group-flush small">
+                                    <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-1 d-flex justify-content-between align-items-center border-bottom border-light">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-clock me-2 text-muted"></i>
+                                            <span class="fw-semibold text-dark">{{ res.inicioFmt }} - {{ res.finFmt }}</span>
+                                        </div>
+                                        <span class="text-secondary text-truncate ms-2" style="max-width: 120px; font-size: 0.85em;">
+                                            {{ res.maestro }}
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2 mt-auto pt-2 border-top border-light">
+                                <button 
+                                    v-if="sala.idCancelable"
+                                    @click="cancelar(sala.idCancelable, sala.descCancelable)"
+                                    class="btn btn-sm btn-outline-danger flex-grow-1"
+                                    title="Cancelar reserva"
+                                >
+                                    <i class="bi bi-trash me-1"></i> Cancelar
+                                </button>
+
+                                <button 
+                                    @click="seleccionar(sala.id)"
+                                    class="btn btn-sm btn-outline-primary"
+                                    :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
+                                    :disabled="sala.agotada"
+                                >
+                                    Usar Sala
+                                </button>
+                            </div>
+
                         </div>
                     </div>
-                </div>
-                <div class="card-footer bg-white text-center small text-muted">
-                    Se muestran solo ocupaciones futuras del día seleccionado.
                 </div>
             </div>
         </div>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-.form-control:focus, .form-select:focus {
-  border-color: #005f86;
-  box-shadow: 0 0 0 0.2rem rgba(0, 95, 134, 0.25);
+/* Ajustes finos para suavizar la interfaz */
+.form-control:focus, .form-select:focus { 
+    border-color: #86b7fe; 
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15); 
 }
-.list-group-item {
-    transition: background-color 0.2s;
+.card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s;
 }
-.list-group-item:hover {
-    background-color: #f8f9fa;
+.card:hover {
+    border-color: #dee2e6;
 }
-.x-small {
-    font-size: 0.75rem;
+.btn-sm {
+    font-size: 0.85rem;
 }
+.bg-success-subtle { background-color: #d1e7dd; }
+.bg-warning-subtle { background-color: #fff3cd; }
+.bg-danger-subtle { background-color: #f8d7da; }
 </style>

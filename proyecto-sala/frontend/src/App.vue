@@ -1,26 +1,50 @@
 <script setup>
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
+
+const router = useRouter();
+const route = useRoute(); // Necesario para saber en qué pantalla estamos
+
+const logout = () => {
+  if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('is_superuser');
+    localStorage.removeItem('username');
+    
+    router.push('/login');
+  }
+}
 </script>
 
 <template>
-  <div class="app-layout">
+  <!-- CASO 1: SI ESTAMOS EN LOGIN -> Mostrar solo el contenido (Pantalla completa) -->
+  <div v-if="route.name === 'login'" class="w-100 h-100">
+      <RouterView />
+  </div>
+
+  <!-- CASO 2: CUALQUIER OTRA PANTALLA -> Mostrar el sistema con Menú y Barra -->
+  <div v-else class="app-layout">
    
     <div class="topbar">
       <div class="logo-text">
-       
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e9/Logo_de_la_UJAT.svg" alt="Logo UJAT" class="logo-img">
         Universidad Juárez Autónoma de Tabasco
       </div>
       <div class="topbar-icons">
-      
-        <img src="https://cdn-icons-png.flaticon.com/512/1828/1828479.png" title="Configuración" class="icon">
+        <img 
+          src="https://cdn-icons-png.flaticon.com/512/1828/1828479.png" 
+          title="Cerrar Sesión" 
+          class="icon"
+          @click="logout"
+        >
         <img src="https://cdn-icons-png.flaticon.com/512/1077/1077114.png" title="Usuario" class="icon">
       </div>
     </div>
 
     <div class="container-fluid main-container">
       <div class="row flex-nowrap">
-       
+        <!-- BARRA LATERAL -->
         <div class="col-auto col-md-3 col-xl-2 px-sm-2 px-0 sidebar">
           <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
             <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start w-100" id="menu">
@@ -39,12 +63,11 @@ import { RouterLink, RouterView } from 'vue-router'
                   <span class="ms-1 d-none d-sm-inline">Consultar Reportes</span>
                 </RouterLink>
               </li>
-              
             </ul>
           </div>
         </div>
 
-       
+        <!-- CONTENIDO PRINCIPAL -->
         <div class="col py-3 content-area">
           <RouterView />
         </div>
@@ -54,6 +77,9 @@ import { RouterLink, RouterView } from 'vue-router'
 </template>
 
 <style scoped>
+/* Aseguramos que el contenedor del login ocupe todo */
+.w-100 { width: 100vw; }
+.h-100 { height: 100vh; }
 
 .topbar {
   background-color: #005f86;
@@ -84,6 +110,11 @@ import { RouterLink, RouterView } from 'vue-router'
   margin-left: 15px;
   cursor: pointer;
   filter: brightness(0) invert(1); 
+  transition: transform 0.2s;
+}
+
+.icon:hover {
+  transform: scale(1.1);
 }
 
 .sidebar {

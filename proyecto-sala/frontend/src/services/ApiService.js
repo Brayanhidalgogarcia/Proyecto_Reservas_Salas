@@ -1,36 +1,68 @@
 import axios from 'axios';
 
-
-const apiClient = axios.create({
+export const apiClient = axios.create({
   baseURL: 'http://127.0.0.1:8000/api/v1/', 
   headers: {
     'Content-Type': 'application/json'
-    
   }
 });
 
+// --- INTERCEPTOR DE SEGURIDAD (TOKEN) ---
+// Antes de enviar cualquier petición, revisa si hay un token guardado
+// y lo pega en la cabecera "Authorization".
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// --- INTERCEPTOR DE ERRORES (Opcional pero recomendado) ---
+// Si el token venció (Error 401), podemos sacar al usuario automáticamente.
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Token vencido o inválido
+      console.warn("Sesión expirada. Redirigiendo al login...");
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      // Forzamos la recarga hacia el login para limpiar el estado
+      if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default {
 
+  
+  // Actualizamos las rutas a '/usuarios/' porque cambiamos el backend
+  obtenerUsuarios() {
+    return apiClient.get('/usuarios/');
+  },
+  obtenerUsuario(id) { 
+    return apiClient.get(`/usuarios/${id}/`);
+  },
+  crearUsuario(datosUsuario) {
+    return apiClient.post('/usuarios/', datosUsuario);
+  },
+  actualizarUsuario(id, datosUsuario) {
+    return apiClient.put(`/usuarios/${id}/`, datosUsuario);
+  },
+  eliminarUsuario(id) {
+    return apiClient.delete(`/usuarios/${id}/`);
+  },
 
-  obtenerPerfilesAdmin() {
-    return apiClient.get('/perfiles/');
-  },
-  obtenerPerfilAdmin(matriculaUD) { 
-    return apiClient.get(`/perfiles/${matriculaUD}/`);
-  },
-  crearPerfilAdmin(datosPerfil) {
-    
-    return apiClient.post('/perfiles/', datosPerfil);
-  },
-  actualizarPerfilAdmin(matriculaUD, datosPerfil) {
-    return apiClient.put(`/perfiles/${matriculaUD}/`, datosPerfil);
-  },
-  eliminarPerfilAdmin(matriculaUD) {
-    return apiClient.delete(`/perfiles/${matriculaUD}/`);
-  },
-
-
+  // --- DIVISIONES ---
   obtenerDivisiones() {
     return apiClient.get('/divisiones/');
   },
@@ -47,7 +79,7 @@ export default {
     return apiClient.delete(`/divisiones/${claveDivision}/`);
   },
 
-  
+  // --- ASIGNATURAS ---
   obtenerAsignaturas() {
     return apiClient.get('/asignaturas/');
   },
@@ -64,6 +96,7 @@ export default {
     return apiClient.delete(`/asignaturas/${claveAsignatura}/`);
   },
 
+  // --- SALAS ---
   obtenerSalas() {
     return apiClient.get('/salas/');
   },
@@ -80,7 +113,7 @@ export default {
     return apiClient.delete(`/salas/${claveSala}/`);
   },
 
-
+  // --- MAESTROS ---
   obtenerMaestros() {
     return apiClient.get('/maestros/');
   },
@@ -97,9 +130,8 @@ export default {
     return apiClient.delete(`/maestros/${matriculaM}/`);
   },
 
- 
+  // --- RESERVAS ---
   obtenerReservas(filtros = {}) {
-    
     const params = new URLSearchParams(filtros).toString();
     return apiClient.get(`/reservas/?${params}`);
   },
@@ -118,4 +150,3 @@ export default {
   }
 
 };
-

@@ -1,5 +1,8 @@
 <script setup>
 import { ref } from 'vue';
+import { useRouter } from 'vue-router'; // 1. Importamos el router para redirigir
+
+const router = useRouter(); // Inicializamos el router
 
 const form = ref({
   username: "", 
@@ -11,6 +14,7 @@ const error = ref(null);
 const cargando = ref(false);
 
 async function login() {
+  // Validación básica
   if (!form.value.username || !form.value.password) {
     error.value = "Por favor, completa todos los campos.";
     return;
@@ -20,15 +24,44 @@ async function login() {
   error.value = null;
 
   try {
-    console.log("Intentando iniciar sesión con:", form.value);
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    alert(`Bienvenido (simulado) ${form.value.username}`);
+    // 2. Petición al Backend (Django SimpleJWT)
+    const response = await fetch('http://127.0.0.1:8000/api/token/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            username: form.value.username,
+            password: form.value.password
+        })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        // 3. ¡Éxito! Guardamos los tokens
+        localStorage.setItem('access_token', data.access);
+        localStorage.setItem('refresh_token', data.refresh);
+        
+        // --- CAMBIO IMPORTANTE: Guardar ID y Rol ---
+        // Esto es necesario para saber si eres el dueño de una reserva
+        if (data.user_id) localStorage.setItem('user_id', data.user_id);
+        if (data.is_superuser !== undefined) localStorage.setItem('is_superuser', data.is_superuser);
+        
+        // Guardamos el usuario para mostrar "Hola Juan" en el futuro
+        localStorage.setItem('username', form.value.username);
+
+        // 4. Redirigimos al sistema (ej. a Reservar)
+        router.push('/reservar'); 
+    } else {
+        // Error de credenciales (401)
+        error.value = "Usuario o contraseña incorrectos.";
+        console.error("Login fallido:", data);
+    }
 
   } catch (err) {
-    error.value = "Error al iniciar sesión. Verifica tus credenciales.";
-    console.error("Error de login:", err);
+    error.value = "Error de conexión. Verifica que el servidor Backend esté encendido.";
+    console.error("Error de red:", err);
   } finally {
     cargando.value = false;
   }
@@ -37,10 +70,13 @@ async function login() {
 
 <template>
   <div class="login-container">
+    <!-- Imagen decorativa izquierda -->
     <div class="left-side"></div>
 
+    <!-- Formulario derecha -->
     <div class="right-side">
       <div class="topbar">
+        
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e9/Logo_de_la_UJAT.svg" alt="Logo UJAT">
         <span class="fw-bold fs-4">Universidad Juárez Autónoma de Tabasco</span>
       </div>
@@ -54,12 +90,12 @@ async function login() {
           <form @submit.prevent="login">
             <div class="mb-3">
               <label for="username" class="form-label">Usuario</label> 
-              <input type="text" v-model="form.username" class="form-control" id="username" placeholder="Nombre de usuario">
+              <input type="text" v-model="form.username" class="form-control" id="username" placeholder="Tu usuario administrativo">
             </div>
 
             <div class="mb-3">
               <label for="password" class="form-label">Contraseña</label>
-              <input type="password" v-model="form.password" class="form-control" id="password" placeholder="Contraseña">
+              <input type="password" v-model="form.password" class="form-control" id="password" placeholder="Tu contraseña">
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -70,7 +106,8 @@ async function login() {
             </div>
 
             <button type="submit" class="btn btn-dark w-100" :disabled="cargando">
-              {{ cargando ? 'Iniciando...' : 'Iniciar Sesión' }}
+              <span v-if="cargando" class="spinner-border spinner-border-sm me-2"></span>
+              {{ cargando ? 'Verificando...' : 'Iniciar Sesión' }}
             </button>
           </form>
         </div>
@@ -88,9 +125,18 @@ async function login() {
 }
 .left-side {
     flex: 0.5;
+    /* Asegúrate de que la imagen exista en esta ruta */
     background: url('@/assets/imagenes/sesion.jpg') no-repeat center center; 
     background-size: cover;
     filter: brightness(0.8);
+    /* Color de fondo por si falla la imagen */
+    background-color: #f0f2f5; 
+}
+
+/* Ocultar imagen en móviles */
+@media (max-width: 768px) {
+    .left-side { display: none; }
+    .right-side { flex: 1; }
 }
 
 .right-side {
@@ -107,8 +153,8 @@ async function login() {
   align-items: center;
 }
 .topbar img {
-  height: 80px;
-  margin-right: 30px;
+  height: 60px; /* Ajusté un poco el tamaño */
+  margin-right: 20px;
 }
 .form-box {
   flex: 1;
@@ -124,17 +170,18 @@ async function login() {
 }
 .form-box-inner h4 {
   margin-bottom: 1.5rem;
+  color: #333;
 }
 
+/* IMPORTANTE: Estilos globales para resetear márgenes */
 :global(body) {
   margin: 0;
+  padding: 0;
   height: 100vh;
-  display: flex;
   font-family: Arial, sans-serif;
 }
 :global(#app) {
   width: 100%;
   height: 100%;
 }
-
 </style>
