@@ -60,6 +60,9 @@ class SalaSerializer(serializers.ModelSerializer):
 
 
 class MaestroSerializer(serializers.ModelSerializer):
+  
+    usuario_id = serializers.ReadOnlyField(source='usuario.id')
+
     class Meta:
         model = Maestro
         fields = '__all__'

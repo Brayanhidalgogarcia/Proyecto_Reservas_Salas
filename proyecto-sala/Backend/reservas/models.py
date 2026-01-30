@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
-# 1. MODELOS DE CATÁLOGOS (Sin cambios, necesarios para las llaves foráneas)
+# 1. MODELOS DE CATÁLOGOS
 
 class Division(models.Model):
     clave_division = models.CharField(max_length=20, primary_key=True, db_column='ClaveDivision')
@@ -28,7 +28,6 @@ class Sala(models.Model):
     clave_sala = models.CharField(max_length=20, primary_key=True, db_column='ClaveSala')
     nombre_sala = models.CharField(max_length=80, null=True, blank=True, db_column='NombreSala')
     division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
-    # Opcional: Capacidad para calcular aforo
     capacidad = models.IntegerField(null=True, blank=True, db_column='Capacidad')
 
     class Meta:
@@ -44,6 +43,17 @@ class Maestro(models.Model):
     apellido_m = models.CharField(max_length=84, null=True, blank=True, db_column='ApellidoM')
     division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
 
+    # --- NUEVO CAMPO: VINCULACIÓN CON USUARIO ---
+    # Usamos 'Usuario' entre comillas porque el modelo Usuario se define más abajo.
+    usuario = models.OneToOneField(
+        'Usuario', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='perfil_maestro',
+        db_column='Usuario_ID'
+    )
+
     class Meta:
         db_table = 'maestro'
 
@@ -51,14 +61,15 @@ class Maestro(models.Model):
         return f"{self.nombre} {self.apellido_p}"
 
 
+# 2. MODELO DE USUARIO PERSONALIZADO
 
 class Usuario(AbstractUser):
-    # Desactivamos los nombres por defecto de Django para usar los atomizados latinos
+    # Desactivamos los nombres por defecto de Django
     first_name = None
     last_name = None
 
     # Campos Personalizados
-    email = models.EmailField(unique=True, db_column='Email') # Email obligatorio y único
+    email = models.EmailField(unique=True, db_column='Email')
     matricula_ud = models.CharField(max_length=20, null=True, blank=True, db_column='MatriculaUD')
     
     # Nombre Atomizado
@@ -68,17 +79,16 @@ class Usuario(AbstractUser):
     
     telefono = models.CharField(max_length=20, null=True, blank=True, db_column='Telefono')
     
-    # Relación con División (Para saber qué administrador pertenece a qué área)
+    # Relación con División
     division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
 
     class Meta:
-        db_table = 'usuario_sistema' # Tabla nueva limpia
+        db_table = 'usuario_sistema'
 
     def __str__(self):
-        # Muestra "Juan Perez (admin)"
         return f"{self.nombres} {self.apellido_paterno} ({self.username})"
 
-# 3. MODELO DE RESERVAS (Intacto)
+# 3. MODELO DE RESERVAS
 
 class Reserva(models.Model):
     maestro = models.ForeignKey(Maestro, on_delete=models.CASCADE, null=True, blank=True, db_column='MatriculaM')
@@ -91,7 +101,6 @@ class Reserva(models.Model):
     
     fecha_apartado = models.DateTimeField(auto_now_add=True)
     
-    
     creado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='reservas_creadas')
 
     class Meta:
@@ -103,37 +112,27 @@ class Reserva(models.Model):
             return f"Reserva en {sala_info} el {self.inicio.strftime('%d/%m/%Y a las %H:%M')}"
         return f"Reserva en {sala_info}"
 
-# 4. NUEVO MODELO: REPORTES (Historial de Archivos)
+# 4. MODELO DE REPORTES
 
 class Reporte(models.Model):
-    # Opciones para categorizar el reporte
     class TipoReporte(models.TextChoices):
         OCUPACION_SALAS = 'OCUPACION', 'Ocupación por Sala'
         ACTIVIDAD_DOCENTE = 'DOCENTE', 'Actividad por Maestro'
         GENERAL_MENSUAL = 'GENERAL', 'Resumen General Mensual'
 
-    # --- DATOS BÁSICOS ---
     titulo = models.CharField(max_length=100)
     archivo = models.FileField(upload_to='reportes_generados/', null=True, blank=True)
     fecha_generacion = models.DateTimeField(auto_now_add=True)
     
-    # Relación con el usuario (Admin) que lo generó
     usuario = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True)
-
-    # --- FACTOR DE ESCALABILIDAD (El cambio clave) ---
-    # Vinculamos el reporte a una División.
-    # AUNQUE AHORA SOLO SEA DACITY, este campo es el que permite la expansión futura.
-    # Cuando filtres reportes, siempre harás: Reporte.objects.filter(division=usuario.division)
     division = models.ForeignKey('Division', on_delete=models.CASCADE)
 
-    # --- METADATOS PARA FILTRADO (BI) ---
     tipo = models.CharField(
         max_length=20, 
         choices=TipoReporte.choices, 
         default=TipoReporte.GENERAL_MENSUAL
     )
 
-    # Rango de fechas que abarca la información del reporte
     fecha_inicio_datos = models.DateField(null=True, blank=True)
     fecha_fin_datos = models.DateField(null=True, blank=True)
 
@@ -142,6 +141,5 @@ class Reporte(models.Model):
         ordering = ['-fecha_generacion'] 
 
     def __str__(self):
-        # Muestra: "Reporte Enero (Dacity) - Ocupación"
         div_nombre = self.division.nombre_division if self.division else "Sin División"
         return f"{self.titulo} ({div_nombre}) - {self.get_tipo_display()}"

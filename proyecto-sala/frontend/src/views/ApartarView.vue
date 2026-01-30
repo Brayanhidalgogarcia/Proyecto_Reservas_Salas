@@ -93,22 +93,29 @@ async function cargarDatos() {
         
         const dataReservas = resReservas.data || resReservas;
         
-        // --- LÓGICA DE AUTOSELECCIÓN (NUEVO) ---
+        // --- LÓGICA DE AUTOSELECCIÓN (CORREGIDA POR VINCULACIÓN) ---
+        // Solo aplica si NO es SuperUser y tenemos un ID de usuario logueado
         if (!isSuperUser.value && currentUserId.value) {
-            // Buscamos al maestro cuyo ID coincida con el usuario logueado
-            // Se compara como String para evitar errores de tipo (num vs str)
+            
+            // Buscamos al maestro que tenga el 'usuario_id' igual al ID del usuario actual.
+            // Nota: 'm.usuario_id' viene del cambio que hicimos en el Serializer.
+            // Agregamos 'm.usuario' como fallback por si el serializer enviara el objeto completo.
             const maestroEncontrado = maestros.value.find(m => 
-                String(m.id) === String(currentUserId.value) || 
-                String(m.matricula_m) === String(currentUserId.value)
+                String(m.usuario_id) === String(currentUserId.value) || 
+                String(m.usuario) === String(currentUserId.value)
             );
 
             if (maestroEncontrado) {
-                // Lo seleccionamos automáticamente
+                // ¡Éxito! Encontramos el perfil de maestro vinculado a este usuario.
+                // Seleccionamos su matrícula/ID para la reserva.
                 nuevaReserva.value.maestro = maestroEncontrado.id || maestroEncontrado.matricula_m;
-                // Preparamos el nombre para mostrarlo en el input bloqueado
+                
+                // Mostramos su nombre real en el input bloqueado.
                 nombreUsuarioLogueado.value = `${maestroEncontrado.nombre} ${maestroEncontrado.apellido_p}`;
             } else {
-                console.warn("Usuario logueado no encontrado en lista de maestros");
+                // El usuario existe y logueó, pero NO está vinculado a ningún maestro en el Admin.
+                nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro vinculado";
+                console.warn("ADVERTENCIA: El usuario logueado (ID " + currentUserId.value + ") no tiene un registro de Maestro asociado en la BD.");
             }
         }
         
