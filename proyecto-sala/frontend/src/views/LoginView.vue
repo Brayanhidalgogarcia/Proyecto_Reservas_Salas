@@ -101,7 +101,7 @@ async function login() {
             <div class="d-flex justify-content-between align-items-center mb-3">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" v-model="form.remember" id="remember">
-                <label class="form-check-label" for="remember">Recuérdame</label>
+                
               </div>
             </div>
 
