@@ -286,7 +286,7 @@ function formatDateTime(dateTimeString) {
             <h2 class="text-dark fw-bold mb-0">
                 <i class="bi bi-folder2-open text-primary me-2"></i>Gestión de Reportes
             </h2>
-            <p class="text-muted small mb-0">Historial y generación de análisis de ocupación</p>
+            
         </div>
         
         <div class="btn-group">
@@ -359,23 +359,32 @@ function formatDateTime(dateTimeString) {
                             <td>{{ rep.division_nombre }}</td>
                             <td>{{ rep.creado_por }}</td>
                             <td>{{ new Date(rep.fecha_generacion).toLocaleDateString() }}</td>
+                            
                             <td class="text-end">
-                                <a 
-                                    v-if="rep.archivo" 
-                                    :href="rep.archivo" 
-                                    target="_blank"
-                                    class="btn btn-sm btn-outline-success me-2"
-                                    title="Descargar Archivo">
-                                    <i class="bi bi-download"></i>
-                                </a>
-                                <button 
-                                    @click="eliminarDelHistorial(rep.id)" 
-                                    class="btn btn-sm btn-outline-danger"
-                                    title="Eliminar">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                                <div class="d-flex justify-content-end gap-2">
+                                    
+                                    <a 
+                                        v-if="rep.archivo" 
+                                        :href="rep.archivo" 
+                                        target="_blank"
+                                        class="btn btn-outline-primary d-flex align-items-center gap-2"
+                                        title="Descargar PDF"
+                                    >
+                                        <i class="bi bi-file-earmark-pdf-fill fs-5"></i>
+                                        <span class="d-none d-md-inline fw-semibold">PDF</span>
+                                    </a>
+
+                                    <button 
+                                        @click="eliminarDelHistorial(rep.id)" 
+                                        class="btn btn-outline-danger d-flex align-items-center gap-2"
+                                        title="Eliminar del historial"
+                                    >
+                                        <i class="bi bi-trash3-fill fs-5"></i>
+                                        <span class="d-none d-md-inline fw-semibold">Eliminar</span>
+                                    </button>
+                                </div>
                             </td>
-                        </tr>
+                            </tr>
                     </tbody>
                 </table>
             </div>

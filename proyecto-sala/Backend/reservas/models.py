@@ -1,5 +1,9 @@
+import os
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 # 1. MODELOS DE CATÁLOGOS
 
@@ -143,3 +147,12 @@ class Reporte(models.Model):
     def __str__(self):
         div_nombre = self.division.nombre_division if self.division else "Sin División"
         return f"{self.titulo} ({div_nombre}) - {self.get_tipo_display()}"
+    
+@receiver(post_delete, sender=Reporte)
+def eliminar_archivo_reporte(sender, instance, **kwargs):
+    """
+    Borra el archivo físico cuando se elimina el registro de Reporte en la BD.
+    """
+    if instance.archivo:
+        if os.path.isfile(instance.archivo.path):
+            os.remove(instance.archivo.path)
