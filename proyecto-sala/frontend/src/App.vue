@@ -1,22 +1,22 @@
 <script setup>
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
-import { ref, watch, onMounted } from 'vue'; // Agregamos onMounted
+import { ref, watch, onMounted } from 'vue'; 
 
 const router = useRouter();
 const route = useRoute();
 const esAdmin = ref(false);
 
-// Función reutilizable para verificar el rol
+
 const verificarAdmin = () => {
   esAdmin.value = localStorage.getItem('is_superuser') === 'true';
 };
 
-// 1. Verificar al cargar la página (F5)
+
 onMounted(() => {
   verificarAdmin();
 });
 
-// 2. Verificar al navegar (Login/Logout)
+
 watch(route, () => {
   verificarAdmin();
 });
@@ -28,22 +28,22 @@ const logout = () => {
     localStorage.removeItem('user_id');
     localStorage.removeItem('is_superuser');
     localStorage.removeItem('username');
-    localStorage.removeItem('nombre_usuario'); // Limpiamos también estos
+    localStorage.removeItem('nombre_usuario'); 
     localStorage.removeItem('user_division');
     
-    esAdmin.value = false; // Forzamos el estado a falso visualmente
+    esAdmin.value = false; 
     router.push('/login');
   }
 }
 </script>
 
 <template>
-  <!-- CASO 1: SI ESTAMOS EN LOGIN -> Mostrar solo el contenido -->
+  
   <div v-if="route.name === 'login'" class="w-100 h-100">
       <RouterView />
   </div>
 
-  <!-- CASO 2: CUALQUIER OTRA PANTALLA -> Mostrar el sistema con Menú y Barra -->
+
   <div v-else class="app-layout">
    
     <div class="topbar">
@@ -58,7 +58,7 @@ const logout = () => {
           class="icon"
           @click="logout"
         >
-        <img src="https://cdn-icons-png.flaticon.com/512/1077/1077114.png" title="Usuario" class="icon">
+        <!---<img src="https://cdn-icons-png.flaticon.com/512/1077/1077114.png" title="Usuario" class="icon">-->
       </div>
     </div>
 
@@ -69,28 +69,28 @@ const logout = () => {
           <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
             <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start w-100" id="menu">
               
-              <!-- DISPONIBILIDAD (Para todos) -->
+             
               <li class="nav-item w-100">
                 <RouterLink to="/disponibilidad" class="nav-link align-middle px-0 text-dark">
                   <span class="ms-1 d-none d-sm-inline">Consultar Disponibilidad</span>
                 </RouterLink>
               </li>
               
-              <!-- RESERVAR (Para todos) -->
+              
               <li class="nav-item w-100">
                 <RouterLink to="/reservar" class="nav-link px-0 align-middle text-dark">
                   <span class="ms-1 d-none d-sm-inline">Apartar Sala Audiovisual</span>
                 </RouterLink>
               </li>
               
-              <!-- REPORTES (SOLO ADMIN) -->
+             
               <li class="nav-item w-100" v-if="esAdmin">
                 <RouterLink to="/reportes" class="nav-link px-0 align-middle text-dark">
                   <span class="ms-1 d-none d-sm-inline">Consultar Reportes</span>
                 </RouterLink>
               </li>
 
-              <!-- ALTA DE USUARIOS (SOLO ADMIN) -->
+          
               <li class="nav-item w-100" v-if="esAdmin">
                 <RouterLink to="/admin/alta-usuario" class="nav-link px-0 align-middle text-dark"> 
                   <span class="ms-1 d-none d-sm-inline">Alta de Usuarios</span>
@@ -101,7 +101,7 @@ const logout = () => {
           </div>
         </div>
 
-        <!-- CONTENIDO PRINCIPAL -->
+    
         <div class="col py-3 content-area">
           <RouterView />
         </div>
@@ -110,7 +110,7 @@ const logout = () => {
   </div>
 </template>
 <style scoped>
-/* Aseguramos que el contenedor del login ocupe todo */
+
 .w-100 { width: 100vw; }
 .h-100 { height: 100vh; }
 

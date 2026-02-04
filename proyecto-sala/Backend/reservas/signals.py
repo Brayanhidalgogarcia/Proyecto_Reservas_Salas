@@ -22,7 +22,7 @@ def notificar_cambio_reserva(sender, instance, created, **kwargs):
         }
     )
 
-# Esta función se ejecuta cuando se ELIMINA una reserva
+
 @receiver(post_delete, sender=Reserva)
 def notificar_borrado_reserva(sender, instance, **kwargs):
     channel_layer = get_channel_layer()

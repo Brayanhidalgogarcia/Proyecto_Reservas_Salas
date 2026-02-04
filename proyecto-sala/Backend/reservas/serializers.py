@@ -1,41 +1,35 @@
 from rest_framework import serializers
-# Importamos el serializador base de JWT para extenderlo
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (Division, Asignatura, Sala, Maestro, 
                      Reserva, 
                      Usuario,Reporte)
-from django.contrib.auth.models import User
 from django.utils import timezone
 
 
-# --- PASO 1.1: IDENTIDAD EN EL LOGIN ---
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        # 1. Obtenemos los tokens básicos (access y refresh)
+        #
         data = super().validate(attrs)
         
-        # 2. Datos básicos de la cuenta
+        
         data['user_id'] = self.user.id
         data['username'] = self.user.username
         data['is_superuser'] = self.user.is_superuser
         
-        # 3. RECUPERACIÓN INTELIGENTE DE DATOS (NUEVA LÓGICA)
-        # Intentamos buscar si este usuario tiene un maestro vinculado
         try:
-            # Accedemos a la relación inversa definida en models.py (related_name='perfil_maestro')
+            
             maestro = self.user.perfil_maestro
             
-            # Si existe el maestro, sacamos sus datos reales
+            
             if maestro:
                 data['nombre_completo'] = f"{maestro.nombre} {maestro.apellido_p}"
-                # Validamos que tenga división asignada antes de acceder a su nombre
+                
                 data['division'] = maestro.division.nombre_division if maestro.division else None
             
         except Exception:
-            # CASO ADMIN PURO O USUARIO SIN VINCULAR:
-            # Si entra aquí es porque self.user.perfil_maestro no existe.
-            # Devolvemos valores neutros para que el frontend no falle.
-            data['nombre_completo'] = self.user.username # Usamos el usuario como nombre
+
+            data['nombre_completo'] = self.user.username 
             data['division'] = None
 
         return data
@@ -89,7 +83,6 @@ class MaestroSerializer(serializers.ModelSerializer):
         return response
 
 
-# --- PASO 1.2: PROPIEDAD DE LA RESERVA ---
 class ReservaSerializer(serializers.ModelSerializer):
     division = serializers.StringRelatedField(source='sala.division', read_only=True)
     
@@ -156,16 +149,15 @@ class ReservaSerializer(serializers.ModelSerializer):
             })
 
         return data
-    # --- SERIALIZER DE REPORTES ---
+
 class ReporteSerializer(serializers.ModelSerializer):
-    # Metadatos extra para facilitar la vida al Frontend
-    # Muestra "Ocupación por Sala" en lugar de "OCUPACION"
+    
     tipo_legible = serializers.CharField(source='get_tipo_display', read_only=True)
     
-    # Muestra el nombre de la división en lugar de solo el ID (Clave)
+    
     division_nombre = serializers.ReadOnlyField(source='division.NombreDivision')
     
-    # Muestra quién lo generó (puedes cambiar 'username' por 'nombres' si prefieres)
+  
     creado_por = serializers.ReadOnlyField(source='usuario.username')
 
     class Meta:
@@ -176,31 +168,29 @@ class ReporteSerializer(serializers.ModelSerializer):
             'archivo', 
             'fecha_generacion', 
             'tipo', 
-            'tipo_legible',       # Campo calculado
+            'tipo_legible',       
             'fecha_inicio_datos', 
             'fecha_fin_datos',
-            'usuario',            # ID del usuario (Read Only)
-            'creado_por',         # Nombre del usuario (Read Only)
-            'division',           # ID de división (Read Only - Seguridad)
-            'division_nombre'     # Nombre de división (Read Only)
+            'usuario',           
+            'creado_por',         
+            'division',           
+            'division_nombre'     
         ]
         
-        # SEGURIDAD CRÍTICA:
-        # Estos campos NO se aceptan en el JSON de entrada.
-        # Se llenan automáticamente en el Backend (perform_create).
+        
         read_only_fields = ['usuario', 'division', 'fecha_generacion']
         
-# --- SERIALIZER PARA REGISTRO DE USUARIOS (ALTA) ---
+
 
 
 class RegistroMaestroSerializer(serializers.ModelSerializer):
-    # Campo auxiliar para buscar al maestro (no se guarda en Usuario)
+    
     matricula = serializers.CharField(write_only=True, required=True)
     password = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = Usuario
-        # LIMPIEZA: Solo pedimos lo necesario para la cuenta
+        
         fields = ['username', 'email', 'password', 'matricula']
 
     def validate_matricula(self, value):
@@ -218,18 +208,17 @@ class RegistroMaestroSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        # 1. Separamos los datos
+      
         matricula = validated_data.pop('matricula')
         password = validated_data.pop('password')
         
-        # 2. Creamos el Usuario (Solo Auth)
-        # create_user se encarga de hashear la contraseña
+     
         user = Usuario.objects.create_user(
             password=password,
-            **validated_data # Aquí va username y email
+            **validated_data 
         )
 
-        # 3. VINCULACIÓN: Asignamos este usuario al maestro existente
+      
         maestro = Maestro.objects.get(matricula_m=matricula)
         maestro.usuario = user
         maestro.save()

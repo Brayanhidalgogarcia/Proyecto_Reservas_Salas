@@ -39,35 +39,35 @@ const router = createRouter({
       component: ReportesView,
       meta: { title: 'Reportes', requiresAuth: true, requiresAdmin: true } 
     },
-    // --- NUEVA RUTA: ALTA DE USUARIOS ---
+   
     {
       path: '/admin/alta-usuario',
       name: 'alta-usuario',
       component: AltaUsuarioView,
-      // Aplicamos el candado doble: Login + Admin
+      
       meta: { title: 'Alta de Usuarios', requiresAuth: true, requiresAdmin: true }
     },
   ]
 })
 
-// --- EL PORTERO (GUARDIA DE NAVEGACIÓN) ---
+
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('access_token');
-  // Obtenemos si es superusuario (guardado como string 'true' o 'false')
+ 
   const isSuperUser = localStorage.getItem('is_superuser') === 'true'; 
 
-  // 1. Verificación de Autenticación
+  
   if (to.meta.requiresAuth && !token) {
     return next('/login');
   }
 
-  // 2. Verificación de Permisos de Admin
+
   if (to.meta.requiresAdmin && !isSuperUser) {
-    // Si intenta entrar a zona protegida sin ser admin, lo mandamos al inicio
+   
     return next('/'); 
   }
 
-  // 3. Pase adelante
+  
   next();
 });
 

@@ -7,7 +7,7 @@ from reservas.views import RegistroUsuarioView
 
 router = DefaultRouter()
 
-# Registramos las rutas de la API
+
 router.register(r'divisiones', views.DivisionViewSet)
 router.register(r'asignaturas', views.AsignaturaViewSet)
 router.register(r'salas', views.SalaViewSet)

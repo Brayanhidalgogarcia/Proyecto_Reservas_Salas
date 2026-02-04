@@ -1,8 +1,7 @@
-from rest_framework import viewsets, permissions, status, generics
+from rest_framework import viewsets, status, generics
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser
-from datetime import datetime
 
 from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte
 from .serializers import (
@@ -11,7 +10,7 @@ from .serializers import (
     ReporteSerializer, RegistroMaestroSerializer
 )
 
-# --- VISTAS DE CATÁLOGOS ---
+
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -28,7 +27,7 @@ class MaestroViewSet(viewsets.ModelViewSet):
     queryset = Maestro.objects.all()
     serializer_class = MaestroSerializer
 
-# --- VISTA DE USUARIOS ---
+
 class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
     
@@ -38,7 +37,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return Usuario.objects.all()
         return Usuario.objects.filter(id=user.id)
 
-# --- VISTA DE RESERVAS (BLINDADA) ---
+
 class ReservaViewSet(viewsets.ModelViewSet):
     queryset = Reserva.objects.all()
     serializer_class = ReservaSerializer
@@ -46,26 +45,22 @@ class ReservaViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
 
-        # --- CANDADO DE SEGURIDAD DE IDENTIDAD ---
+      
         
         if user.is_superuser:
-            # CASO 1: EL ADMINISTRADOR
-            # Confiamos en él. Si eligió un maestro diferente en el formulario, lo respetamos.
-            # Solo firmamos quién creó el registro.
+           
             serializer.save(creado_por=user)
         else:
-            # CASO 2: EL MAESTRO (USUARIO ESTÁNDAR)
-            # No confiamos en el dato 'maestro' que viene del frontend.
-            # Forzamos que la reserva sea para SU propio perfil vinculado.
             
-            # Verificamos el vínculo OneToOne (related_name='perfil_maestro')
+            
+           
             if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
                 serializer.save(
                     creado_por=user,
-                    maestro=user.perfil_maestro  # <--- AQUÍ SE SOBREESCRIBE EL MAESTRO
+                    maestro=user.perfil_maestro  
                 )
             else:
-                # Si el usuario existe pero no está vinculado a la tabla Maestro
+               
                 raise ValidationError({"detail": "Error de Seguridad: Tu cuenta de usuario no está vinculada a ningún perfil de Maestro activo."})
 
     def destroy(self, request, *args, **kwargs):
@@ -103,7 +98,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-# --- VIEWSET DE REPORTES ---
+
 class ReporteViewSet(viewsets.ModelViewSet):
     """
     Maneja la lógica de negocio para los Reportes Generados.
@@ -137,7 +132,7 @@ class ReporteViewSet(viewsets.ModelViewSet):
         if hasattr(user, 'division') and user.division:
             division_destino = user.division
         
-        # Salvavidas para SuperAdmin sin división
+      
         if not division_destino:
             from .models import Division
             division_destino = Division.objects.first()
@@ -150,7 +145,7 @@ class ReporteViewSet(viewsets.ModelViewSet):
             division=division_destino
         )
 
-# --- VISTA DE ALTA DE USUARIOS ---
+
 class RegistroUsuarioView(generics.CreateAPIView):
     """
     Endpoint PROTEGIDO. 

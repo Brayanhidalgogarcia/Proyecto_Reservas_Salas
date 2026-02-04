@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import ApiService from '@/services/ApiService.js'; // Para datos crudos de reservas
-import ReportesService from '@/services/ReporteServices.js';//NUEVO: Para gestión de historial
+import ApiService from '@/services/ApiService.js'; 
+import ReportesService from '@/services/ReporteServices.js';
 
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -20,26 +20,26 @@ import { Bar, Pie } from 'vue-chartjs';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
-// --- ESTADO DE LA VISTA ---
-const vistaActual = ref('historial'); // 'historial' | 'nuevo'
+
+const vistaActual = ref('historial'); 
 const historial = ref([]);
 const cargandoHistorial = ref(false);
 const filtrosHistorial = ref({ tipo: '', anio: new Date().getFullYear() });
 
-// --- ESTADO DEL GENERADOR (Tu lógica anterior) ---
+
 const reservas = ref([]);
 const salas = ref([]);
 const cargando = ref(false);
-const cargandoAccion = ref(false); // Para spinners de guardar/descargar
+const cargandoAccion = ref(false); 
 const error = ref(null);
 const mensajeExito = ref(null);
 
 const fechaInicio = ref('');
 const fechaFin = ref('');
 const salaSeleccionada = ref('');
-const tipoReporteGenerado = ref('GENERAL'); // Para categorizar al guardar
+const tipoReporteGenerado = ref('GENERAL'); 
 
-// Datos estadísticos
+
 const stats = ref({
     salaTop: 'N/A',
     maestroTop: 'N/A',
@@ -53,14 +53,12 @@ const chartDataSalas = ref({ labels: [], datasets: [] });
 const chartDataDias = ref({ labels: [], datasets: [] });
 const chartOptions = { responsive: true, maintainAspectRatio: false };
 
-// ----------------------------------------------------------------------
-// 1. CICLO DE VIDA Y CARGA INICIAL
-// ----------------------------------------------------------------------
+
 onMounted(async () => {
-  // Al iniciar, cargamos el historial (Persistencia)
+  
   await cargarHistorial();
   
-  // Precargamos salas para el selector del generador
+  
   try {
     const res = await ApiService.obtenerSalas();
     salas.value = res.data || res;
@@ -79,13 +77,11 @@ function configurarFechasDefault() {
     fechaFin.value = new Date(ultimoDia - offset).toISOString().split('T')[0];
 }
 
-// ----------------------------------------------------------------------
-// 2. LÓGICA DEL HISTORIAL (NUEVO MODELO DE DATOS)
-// ----------------------------------------------------------------------
+
 async function cargarHistorial() {
     cargandoHistorial.value = true;
     try {
-        // Usamos el servicio nuevo con filtros
+       
         const res = await ReportesService.obtenerReportes(filtrosHistorial.value);
         historial.value = res.data;
     } catch (e) {
@@ -106,13 +102,11 @@ async function eliminarDelHistorial(id) {
 }
 
 function descargarArchivo(url) {
-    // Si la URL es completa, abrimos. Si es relativa, usas window.open o el servicio
+   
     if(url) window.open(url, '_blank');
 }
 
-// ----------------------------------------------------------------------
-// 3. LÓGICA DEL GENERADOR (TU CÓDIGO REFISNADO)
-// ----------------------------------------------------------------------
+
 async function generarAnalisisEnVivo() {
   cargando.value = true;
   error.value = null;
@@ -134,7 +128,7 @@ async function generarAnalisisEnVivo() {
         let coincideSala = true;
         if (salaSeleccionada.value) {
             const idSalaReserva = (typeof r.sala === 'object') ? r.sala.id : r.sala;
-            // Fallback para claves string o ids numéricos
+           
             const claveSalaReserva = (typeof r.sala === 'object') ? r.sala.clave_sala : null;
             
             coincideSala = String(idSalaReserva) === String(salaSeleccionada.value) || 
@@ -154,11 +148,9 @@ async function generarAnalisisEnVivo() {
   }
 }
 
-// ... (Las funciones calcularEstadisticas, getKeyWithMaxVal, resetStats y prepararGraficos
-// SE MANTIENEN IGUALES A TU CÓDIGO, las omito aquí por brevedad pero están presentes en la lógica) ...
+
 function calcularEstadisticas() {
-    // ... Tu lógica original de estadísticas ...
-    // (Pego versión resumida para que funcione el contexto)
+    
     if (reservas.value.length === 0) { resetStats(); return; }
     const conteoSalas = {};
     let totalHoras = 0;
@@ -172,7 +164,7 @@ function calcularEstadisticas() {
     });
     stats.value.salaTop = getKeyWithMaxVal(conteoSalas);
     stats.value.horasTotales = totalHoras.toFixed(1);
-    // ... Resto de tu lógica ...
+    
 }
 function getKeyWithMaxVal(obj) {
     const keys = Object.keys(obj);
@@ -195,14 +187,10 @@ function prepararGraficos() {
         labels: Object.keys(conteoSalas),
         datasets: [{ label: 'Reservas', backgroundColor: '#005f86', data: Object.values(conteoSalas) }]
     };
-    chartDataDias.value = { labels: [], datasets: [] }; // Placeholder para evitar error
+    chartDataDias.value = { labels: [], datasets: [] }; 
+
 }
 
-// ----------------------------------------------------------------------
-// 4. GUARDADO EN BASE DE DATOS (INTEGRACIÓN NUEVA)
-// ----------------------------------------------------------------------
-
-// Genera el PDF en memoria (Blob) sin descargarlo, para enviarlo a la API
 const generarBlobPDF = async () => {
     const elemento = document.getElementById('reporte-imprimible');
     if (!elemento) return null;
@@ -214,7 +202,7 @@ const generarBlobPDF = async () => {
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     
     pdf.addImage(imgData, 'PNG', 0, 10, pdfWidth, pdfHeight);
-    return pdf.output('blob'); // Retorna el archivo binario
+    return pdf.output('blob'); 
 };
 
 async function guardarReporteEnSistema() {
@@ -223,25 +211,25 @@ async function guardarReporteEnSistema() {
 
     cargandoAccion.value = true;
     try {
-        // 1. Generamos el archivo físico (PDF de las gráficas)
+        
         const pdfBlob = await generarBlobPDF();
         const archivoFile = new File([pdfBlob], `Reporte_${Date.now()}.pdf`, { type: "application/pdf" });
 
-        // 2. Preparamos los metadatos para el Modelo Django
+       
         const payload = {
             titulo: `Reporte ${fechaInicio.value} al ${fechaFin.value}`,
-            tipo: tipoReporteGenerado.value, // 'OCUPACION', 'DOCENTE', etc.
+            tipo: tipoReporteGenerado.value, 
             fecha_inicio_datos: fechaInicio.value,
             fecha_fin_datos: fechaFin.value,
             archivo: archivoFile
         };
 
-        // 3. Enviamos al Backend usando el Servicio Nuevo
+       
         await ReportesService.crearReporte(payload);
         
         mensajeExito.value = "Reporte guardado exitosamente en la base de datos.";
         
-        // 4. Volvemos al historial automáticamente tras unos segundos
+        
         setTimeout(() => {
             mensajeExito.value = null;
             vistaActual.value = 'historial';
@@ -256,7 +244,7 @@ async function guardarReporteEnSistema() {
     }
 }
 
-// Función auxiliar para descargar localmente (sin guardar en BD)
+
 const descargarPDFLocal = async () => {
     cargandoAccion.value = true;
     try {

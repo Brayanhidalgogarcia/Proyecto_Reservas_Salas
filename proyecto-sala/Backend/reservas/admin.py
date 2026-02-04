@@ -17,13 +17,13 @@ class UsuarioAdmin(UserAdmin):
         'username', 
         'email', 
         'is_staff', 
-        'maestro_vinculado' # La columna inteligente que creamos
+        'maestro_vinculado'
     ]
     
     search_fields = ['username', 'email']
     list_filter = ['is_staff', 'is_superuser', 'is_active']
 
-    # Función para ver datos del maestro vinculado
+    
     def maestro_vinculado(self, obj):
         if hasattr(obj, 'perfil_maestro') and obj.perfil_maestro:
             return f"{obj.perfil_maestro.nombre} {obj.perfil_maestro.apellido_p} ({obj.perfil_maestro.matricula_m})"
@@ -49,13 +49,13 @@ class UsuarioAdmin(UserAdmin):
                 'matricula',
                 'username', 
                 'email', 
-                'password1',  # <--- ANTES DECÍA 'password'
-                'password2' # Validación automática del form
+                'password1',  
+                'password2'
             ),
         }),
     )
 
-# --- MAESTROS (DONDE VIVE LA INFO REAL) ---
+# --- MAESTROS ---
 @admin.register(Maestro)
 class MaestroAdmin(admin.ModelAdmin):
     list_display = [
@@ -69,7 +69,6 @@ class MaestroAdmin(admin.ModelAdmin):
     search_fields = ['matricula_m', 'nombre', 'apellido_p']
     list_filter = ['division']
     
-    # Aquí puedes editar todo
     fields = (
         ('matricula_m', 
         'nombre', 
@@ -77,16 +76,16 @@ class MaestroAdmin(admin.ModelAdmin):
         'apellido_m',
         'telefono',
         'division',
-        'usuario') # Aquí vinculas el usuario manualmente si quieres
+        'usuario') 
     )
 
     def nombre_completo(self, obj):
         return f"{obj.nombre} {obj.apellido_p} {obj.apellido_m or ''}"
     
     def usuario_asociado(self, obj):
-        return obj.usuario.username if obj.usuario else "❌ Sin Usuario"
+        return obj.usuario.username if obj.usuario else "Sin Usuario"
 
-# --- OTROS MODELOS ---
+
 admin.site.register(Division)
 admin.site.register(Asignatura)
 admin.site.register(Sala)

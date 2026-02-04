@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 
 
 class UsuarioCreationForm(UserCreationForm):
-    # Mantenemos tus campos explícitos de contraseña
+    
     matricula = forms.CharField(
         label="Matrícula del Docente",
         max_length=20,
@@ -60,14 +60,13 @@ class UsuarioCreationForm(UserCreationForm):
         return cleaned_data    
 
     def save(self, commit=True):
-        # Primero guardamos al usuario (Auth)
+       
         user = super().save(commit=False)
         user.set_password(self.cleaned_data["password1"])
         
         if commit:
             user.save()
-            # AQUÍ ESTÁ LA LÓGICA QUE FALTABA:
-            # Buscamos al maestro por la matrícula que escribiste y le asignamos el usuario
+           
             matricula = self.cleaned_data['matricula']
             maestro = Maestro.objects.get(matricula_m=matricula)
             maestro.usuario = user
@@ -78,5 +77,5 @@ class UsuarioCreationForm(UserCreationForm):
 class UsuarioChangeForm(UserChangeForm):
     class Meta:
         model = Usuario
-        # Limitamos los campos para evitar errores si Django intenta buscar columnas viejas
+        
         fields = ('username', 'email')

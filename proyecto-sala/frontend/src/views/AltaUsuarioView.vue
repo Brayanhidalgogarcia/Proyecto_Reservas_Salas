@@ -8,7 +8,7 @@
     <div class="card shadow-sm border rounded-3">
       <div class="card-body p-4">
         
-        <!-- ALERTAS -->
+      
         <div v-if="mensaje.texto" :class="`alert alert-${mensaje.tipo} d-flex align-items-center`" role="alert">
           <i :class="mensaje.icono" class="me-2 fs-5"></i>
           <div>{{ mensaje.texto }}</div>
@@ -22,7 +22,7 @@
           
           <div class="row g-3">
             
-            <!-- 1. VINCULACIÓN (Lo más importante) -->
+            
             <div class="col-12">
               <h6 class="border-bottom pb-2 text-primary">Identificación del Docente</h6>
             </div>
@@ -42,7 +42,7 @@
               <div class="form-text small">El sistema buscará al maestro en el padrón automáticamente.</div>
             </div>
 
-            <!-- 2. CREDENCIALES -->
+           
             <div class="col-12 mt-4">
               <h6 class="border-bottom pb-2 text-primary">Credenciales de Acceso</h6>
             </div>
@@ -69,7 +69,7 @@
 
           </div>
 
-          <!-- BOTONES -->
+        
           <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
             <button type="button" class="btn btn-outline-secondary" @click="limpiarFormulario">
               Cancelar
@@ -93,9 +93,9 @@ import ApiService from '@/services/ApiService';
 const cargando = ref(false);
 const mensaje = reactive({ tipo: '', texto: '', icono: '' });
 
-// Formulario limpio y normalizado
+
 const formulario = reactive({
-  matricula: '',  // La llave para buscar al maestro
+  matricula: '',  
   username: '',
   email: '',
   password: '',
@@ -137,11 +137,11 @@ const registrar = async () => {
     mensaje.icono = 'bi bi-x-circle-fill';
     
     if (error.response && error.response.data) {
-      // Manejo inteligente de errores del serializer
+      
       const data = error.response.data;
-      // Si el error es una lista (ej: username ya existe), tomamos el primero
+      
       if (data.username) mensaje.texto = `Usuario: ${data.username[0]}`;
-      else if (data.matricula) mensaje.texto = data.matricula[0]; // "Matrícula no existe"
+      else if (data.matricula) mensaje.texto = data.matricula[0]; 
       else if (data.detail) mensaje.texto = data.detail;
       else mensaje.texto = 'Error al registrar. Verifique los datos.';
     } else {

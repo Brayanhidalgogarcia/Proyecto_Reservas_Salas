@@ -7,7 +7,7 @@ export const apiClient = axios.create({
   }
 });
 
-// --- INTERCEPTOR DE SEGURIDAD (TOKEN) ---
+
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -21,7 +21,7 @@ apiClient.interceptors.request.use(
   }
 );
 
-// --- INTERCEPTOR DE ERRORES ---
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -39,7 +39,7 @@ apiClient.interceptors.response.use(
 
 export default {
 
-  // --- USUARIOS (CRUD General) ---
+ 
   obtenerUsuarios() {
     return apiClient.get('/usuarios/');
   },
@@ -56,17 +56,17 @@ export default {
     return apiClient.delete(`/usuarios/${id}/`);
   },
 
-  // --- GESTIÓN DE CUENTAS (ALTA ADMINISTRATIVA) ---
+  
   /**
-   * Registra un nuevo usuario vinculado a un maestro existente.
+   
    * @param {Object} datos - { username, password, matricula, email }
    */
   registrarUsuario(datos) {
-    // CORRECCIÓN: Apuntamos a la ruta exacta definida en urls.py
+    
     return apiClient.post('/admin/registro-usuario/', datos);
   },
 
-  // --- DIVISIONES ---
+
   obtenerDivisiones() {
     return apiClient.get('/divisiones/');
   },
@@ -83,7 +83,7 @@ export default {
     return apiClient.delete(`/divisiones/${claveDivision}/`);
   },
 
-  // --- ASIGNATURAS ---
+
   obtenerAsignaturas() {
     return apiClient.get('/asignaturas/');
   },
@@ -100,7 +100,7 @@ export default {
     return apiClient.delete(`/asignaturas/${claveAsignatura}/`);
   },
 
-  // --- SALAS ---
+  
   obtenerSalas() {
     return apiClient.get('/salas/');
   },
@@ -117,7 +117,7 @@ export default {
     return apiClient.delete(`/salas/${claveSala}/`);
   },
 
-  // --- MAESTROS ---
+
   obtenerMaestros() {
     return apiClient.get('/maestros/');
   },
@@ -134,7 +134,7 @@ export default {
     return apiClient.delete(`/maestros/${matriculaM}/`);
   },
 
-  // --- RESERVAS ---
+ 
   obtenerReservas(filtros = {}) {
     const params = new URLSearchParams(filtros).toString();
     return apiClient.get(`/reservas/?${params}`);

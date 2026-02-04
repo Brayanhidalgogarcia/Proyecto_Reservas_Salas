@@ -1,10 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router'; // 1. Importar router
+import { useRouter } from 'vue-router'; 
 import SalaCard from '@/components/SalaCard.vue';
 import ApiService from '@/services/ApiService.js';
 
-const router = useRouter(); // Inicializar router
+const router = useRouter(); 
 
 const reservaciones = ref([]);
 const salas = ref([]); 
@@ -44,7 +44,7 @@ const cargarDatos = async () => {
 
       return {
         id: item.id,
-        // Ajuste robusto para leer nombres
+        
         maestro: item.maestro_nombre || item.maestro || 'Desconocido',
         sala: item.sala_nombre || (typeof item.sala === 'object' ? item.sala.nombre_sala : item.sala) || 'Sala sin nombre',
         division: item.division || 'General',
@@ -59,9 +59,9 @@ const cargarDatos = async () => {
 
   } catch (e) {
     console.error("Error fetching data:", e);
-    // 2. Redirección automática si la sesión expiró
+    
     if (e.response && e.response.status === 401) {
-        // No mostramos error, redirigimos directo para que se loguee
+       
         router.push('/login');
     } else if (salas.value.length === 0) {
         error.value = "No se pudo cargar la información. Verifica tu conexión con el servidor.";
@@ -106,12 +106,12 @@ const cambiarDia = (dias) => {
 
 const reservacionesPorSala = computed(() => {
   const listaCompleta = salas.value.map(salaObj => {
-    // 3. CORRECCIÓN ID: Usamos clave_sala o id según venga
+    
     const idSala = salaObj.clave_sala || salaObj.id;
     const nombreSala = salaObj.nombre_sala || salaObj.nombre || `Sala ${idSala}`;
     
     const eventos = reservaciones.value.filter(reserva => {
-        // Normalizamos comparación (String vs String)
+       
         const isSameRoom = String(reserva.sala).trim() === String(nombreSala).trim();
         const isSameDate = reserva.fecha === fechaSeleccionada.value;
         return isSameRoom && isSameDate;
@@ -142,7 +142,7 @@ onUnmounted(() => {
 <template>
   <div class="container-fluid p-4">
     
-    <!-- Encabezado y Filtros -->
+   
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
       <div class="d-flex align-items-center">
         <h2 class="text-dark mb-0 me-3 fw-bold">
@@ -170,7 +170,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Carga y Error -->
+    
     <div v-if="cargando" class="text-center py-5">
       <div class="spinner-border text-primary" role="status"></div>
       <p class="mt-2 text-muted">Cargando agenda...</p>
@@ -180,7 +180,7 @@ onUnmounted(() => {
       <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
     </div>
 
-    <!-- Contenido Principal -->
+   
     <div v-else>
       
       <div v-if="reservacionesPorSala.length === 0" class="text-center py-5 bg-white rounded shadow-sm">
@@ -190,7 +190,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- GRID DE COMPONENTES -->
+      
       <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
         <div class="col" v-for="grupo in reservacionesPorSala" :key="grupo.nombre">
           <SalaCard :sala="grupo" />
@@ -202,7 +202,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Estilos generales */
+
 .form-control:focus, .btn:focus {
   box-shadow: none;
   border-color: #005f86;

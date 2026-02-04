@@ -14,7 +14,7 @@ const error = ref(null);
 const cargando = ref(false);
 
 async function login() {
-  // 1. Validación básica
+  
   if (!form.value.username || !form.value.password) {
     error.value = "Por favor, completa todos los campos.";
     return;
@@ -24,7 +24,7 @@ async function login() {
   error.value = null;
 
   try {
-    // 2. Petición al Backend
+    
     const response = await fetch('http://127.0.0.1:8000/api/token/', {
         method: 'POST',
         headers: {
@@ -36,30 +36,28 @@ async function login() {
         })
     });
 
-    // 3. LECTURA ÚNICA DE LA RESPUESTA (Aquí estaba el error antes)
+  
     const data = await response.json();
 
     if (response.ok) {
-        // --- CASO DE ÉXITO ---
-        
-        // Guardamos Tokens
+       
         localStorage.setItem('access_token', data.access);
         localStorage.setItem('refresh_token', data.refresh);
         
-        // Guardamos Datos de Seguridad
+       
         localStorage.setItem('user_id', data.user_id);
-        localStorage.setItem('is_superuser', data.is_superuser); // Vital para el botón "Alta Usuario"
+        localStorage.setItem('is_superuser', data.is_superuser); 
         
-        // Guardamos Datos de Perfil (Nombre bonito y División)
+        
         const nombreMostrar = data.nombre_completo || data.username;
         localStorage.setItem('nombre_usuario', nombreMostrar);
         localStorage.setItem('user_division', data.division || '');
 
-        // Redirección forzada para recargar el menú (Sidebar)
+        
         window.location.href = '/disponibilidad'; 
 
     } else {
-        // --- CASO DE ERROR (401, 400) ---
+        
         error.value = data.detail || "Usuario o contraseña incorrectos.";
     }
 
@@ -74,13 +72,13 @@ async function login() {
 
 <template>
   <div class="login-container">
-    <!-- Imagen decorativa izquierda -->
+    
     <div class="left-side"></div>
 
-    <!-- Formulario derecha -->
+   
     <div class="right-side">
       <div class="topbar">
-        <!-- Ajusta la ruta de tu logo si es diferente -->
+      
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e9/Logo_de_la_UJAT.svg" alt="Logo UJAT">
         <span class="fw-bold fs-4">Universidad Juárez Autónoma de Tabasco</span>
       </div>
@@ -129,15 +127,15 @@ async function login() {
 }
 .left-side {
     flex: 0.5;
-    /* Asegúrate de que la imagen exista en esta ruta */
+   
     background: url('@/assets/imagenes/sesion.jpg') no-repeat center center; 
     background-size: cover;
     filter: brightness(0.8);
-    /* Color de fondo por si falla la imagen */
+ 
     background-color: #f0f2f5; 
 }
 
-/* Ocultar imagen en móviles */
+
 @media (max-width: 768px) {
     .left-side { display: none; }
     .right-side { flex: 1; }
@@ -157,7 +155,7 @@ async function login() {
   align-items: center;
 }
 .topbar img {
-  height: 60px; /* Ajusté un poco el tamaño */
+  height: 60px; 
   margin-right: 20px;
 }
 .form-box {

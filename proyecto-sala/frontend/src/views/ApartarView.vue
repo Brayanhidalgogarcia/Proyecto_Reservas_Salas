@@ -2,16 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
-// --- CONFIGURACIÓN ---
+
 const HORARIO_APERTURA = 8;
 const HORARIO_CIERRE = 16;
 
-// --- ESTADO DEL USUARIO ---
+
 const currentUserId = ref(null);
 const isSuperUser = ref(false);
-const nombreUsuarioLogueado = ref('Usuario'); // NUEVO: Para mostrar en el input bloqueado
+const nombreUsuarioLogueado = ref('Usuario'); 
 
-// --- ESTADO DEL FORMULARIO ---
+
 const nuevaReserva = ref({
   maestro: null,
   asignatura: null,
@@ -22,13 +22,13 @@ const nuevaReserva = ref({
   fin: ''     
 });
 
-// Listas de datos
+
 const maestros = ref([]);
 const asignaturas = ref([]);
 const salas = ref([]);
 const reservasExistentes = ref([]);
 
-// Estado UI
+
 const cargando = ref(false);
 const enviando = ref(false);
 const error = ref(null);
@@ -36,9 +36,7 @@ const mensajeExito = ref(null);
 
 let socket = null;
 
-// ----------------------------------------------------------------------
-// 1. SEGURIDAD Y PERMISOS
-// ----------------------------------------------------------------------
+
 
 function obtenerIdDesdeToken() {
     const token = localStorage.getItem('access') || localStorage.getItem('token');
@@ -69,9 +67,6 @@ function tengoPermisoBorrar(reserva) {
     return String(currentUserId.value) === String(reserva.creadoPor);
 }
 
-// ----------------------------------------------------------------------
-// 2. CARGA DE DATOS
-// ----------------------------------------------------------------------
 
 async function cargarDatos() {
     cargando.value = true;
@@ -93,27 +88,23 @@ async function cargarDatos() {
         
         const dataReservas = resReservas.data || resReservas;
         
-        // --- LÓGICA DE AUTOSELECCIÓN (CORREGIDA POR VINCULACIÓN) ---
-        // Solo aplica si NO es SuperUser y tenemos un ID de usuario logueado
+       
         if (!isSuperUser.value && currentUserId.value) {
             
-            // Buscamos al maestro que tenga el 'usuario_id' igual al ID del usuario actual.
-            // Nota: 'm.usuario_id' viene del cambio que hicimos en el Serializer.
-            // Agregamos 'm.usuario' como fallback por si el serializer enviara el objeto completo.
+            
             const maestroEncontrado = maestros.value.find(m => 
                 String(m.usuario_id) === String(currentUserId.value) || 
                 String(m.usuario) === String(currentUserId.value)
             );
 
             if (maestroEncontrado) {
-                // ¡Éxito! Encontramos el perfil de maestro vinculado a este usuario.
-                // Seleccionamos su matrícula/ID para la reserva.
+              
                 nuevaReserva.value.maestro = maestroEncontrado.id || maestroEncontrado.matricula_m;
                 
-                // Mostramos su nombre real en el input bloqueado.
+              
                 nombreUsuarioLogueado.value = `${maestroEncontrado.nombre} ${maestroEncontrado.apellido_p}`;
             } else {
-                // El usuario existe y logueó, pero NO está vinculado a ningún maestro en el Admin.
+                
                 nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro vinculado";
                 console.warn("ADVERTENCIA: El usuario logueado (ID " + currentUserId.value + ") no tiene un registro de Maestro asociado en la BD.");
             }
@@ -152,16 +143,14 @@ async function cargarDatos() {
     }
 }
 
-// ----------------------------------------------------------------------
-// 3. LÓGICA DE NEGOCIO (RESTRICCIONES)
-// ----------------------------------------------------------------------
+
 
 const minFecha = computed(() => new Date().toISOString().split('T')[0]);
 
 const obtenerOcupacionesSala = () => {
     if (!nuevaReserva.value.sala || !nuevaReserva.value.fecha) return [];
     
-    // Comparación laxa (==) para soportar string vs number
+    
     const salaObj = salas.value.find(s => (s.id || s.clave_sala) == nuevaReserva.value.sala);
     const nombreObj = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
 
@@ -254,31 +243,28 @@ const estadoSalas = computed(() => {
     });
 });
 
-// ----------------------------------------------------------------------
-// 4. ACCIONES
-// ----------------------------------------------------------------------
+-
 
 async function crearReserva() {
     error.value = null;
 
     const f = nuevaReserva.value;
 
-    // VALIDACIÓN:
-    // Verifica si es null, undefined o string vacío. Acepta el número 0.
+    
     const esInvalido = (v) => v === null || v === undefined || v === '';
 
     if (esInvalido(f.fecha)) { error.value = "La FECHA es obligatoria."; return; }
-    if (esInvalido(f.maestro)) { error.value = "Debes seleccionar un MAESTRO."; return; } // Esta validación sigue siendo necesaria para evitar envíos vacíos
+    if (esInvalido(f.maestro)) { error.value = "Debes seleccionar un MAESTRO."; return; } 
     if (esInvalido(f.sala)) { error.value = "Debes seleccionar una SALA."; return; }
     if (esInvalido(f.asignatura)) { error.value = "Debes seleccionar una ASIGNATURA."; return; }
     if (esInvalido(f.inicio)) { error.value = "La hora de INICIO es obligatoria."; return; }
     if (esInvalido(f.fin)) { error.value = "La hora de FIN es obligatoria."; return; }
     
-    // TEMA es opcional, no se valida.
+    
 
     enviando.value = true;
     try {
-        // Normalizamos el tema a null si viene vacío para evitar errores de backend
+        
         const temaLimpio = f.tema && f.tema.trim() !== '' ? f.tema : null;
 
         const payload = {
@@ -291,7 +277,7 @@ async function crearReserva() {
         await ApiService.crearReserva(payload);
         mensajeExito.value = "Reserva creada con éxito";
         
-        // Limpiamos solo campos temporales (Fecha y Maestro se mantienen para comodidad)
+        
         nuevaReserva.value.inicio = ''; 
         nuevaReserva.value.fin = '';
         nuevaReserva.value.tema = ''; 
@@ -473,7 +459,7 @@ onUnmounted(() => { if(socket) socket.close(); });
 </template>
 
 <style scoped>
-/* Ajustes finos para suavizar la interfaz */
+
 .form-control:focus, .form-select:focus { 
     border-color: #86b7fe; 
     box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15); 
