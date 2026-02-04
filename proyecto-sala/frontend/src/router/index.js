@@ -1,9 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-
+import AltaUsuarioView from '@/views/AltaUsuarioView.vue'
 import DisponibilidadView from '@/views/DisponibilidadView.vue'
 import ApartarView from '../views/ApartarView.vue'
 import ReportesView from '../views/ReportesView.vue'
 import LoginView from '@/views/LoginView.vue'
+
+
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -35,27 +37,33 @@ const router = createRouter({
       path: '/reportes',
       name: 'reportes',
       component: ReportesView,
-      // AGREGAMOS 'requiresAdmin: true'
       meta: { title: 'Reportes', requiresAuth: true, requiresAdmin: true } 
+    },
+    // --- NUEVA RUTA: ALTA DE USUARIOS ---
+    {
+      path: '/admin/alta-usuario',
+      name: 'alta-usuario',
+      component: AltaUsuarioView,
+      // Aplicamos el candado doble: Login + Admin
+      meta: { title: 'Alta de Usuarios', requiresAuth: true, requiresAdmin: true }
     },
   ]
 })
 
-// --- EL PORTERO (GUARDIA DE NAVEGACIÓN MEJORADO) ---
+// --- EL PORTERO (GUARDIA DE NAVEGACIÓN) ---
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('access_token');
-  // Asumimos que guardaste esto en el Login. Si es 'true' o '1', es admin.
+  // Obtenemos si es superusuario (guardado como string 'true' o 'false')
   const isSuperUser = localStorage.getItem('is_superuser') === 'true'; 
 
-  // 1. Verificación de Autenticación (¿Estás logueado?)
+  // 1. Verificación de Autenticación
   if (to.meta.requiresAuth && !token) {
     return next('/login');
   }
 
-  // 2. Verificación de Permisos de Admin (¿Eres el jefe?)
+  // 2. Verificación de Permisos de Admin
   if (to.meta.requiresAdmin && !isSuperUser) {
-    // Si intenta entrar a reportes pero no es admin, lo regresamos al inicio
-    // para que no vea cosas que no debe.
+    // Si intenta entrar a zona protegida sin ser admin, lo mandamos al inicio
     return next('/'); 
   }
 

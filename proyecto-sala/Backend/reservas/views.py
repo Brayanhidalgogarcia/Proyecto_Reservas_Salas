@@ -1,16 +1,17 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics
 from rest_framework.response import Response
-from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario,Reporte
-from .serializers import (
-    DivisionSerializer, AsignaturaSerializer, SalaSerializer, 
-    MaestroSerializer, ReservaSerializer, UsuarioSerializer,ReporteSerializer
-)
-from datetime import datetime
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser
+from datetime import datetime
+
+from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte
+from .serializers import (
+    DivisionSerializer, AsignaturaSerializer, SalaSerializer, 
+    MaestroSerializer, ReservaSerializer, UsuarioSerializer, 
+    ReporteSerializer, RegistroMaestroSerializer
+)
 
 # --- VISTAS DE CATÁLOGOS ---
-# (Asumimos que todos los usuarios autenticados pueden ver/editar catálogos)
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -27,7 +28,7 @@ class MaestroViewSet(viewsets.ModelViewSet):
     queryset = Maestro.objects.all()
     serializer_class = MaestroSerializer
 
-# --- VISTA DE USUARIOS (SEGURIDAD AUMENTADA) ---
+# --- VISTA DE USUARIOS ---
 class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
     
@@ -37,7 +38,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return Usuario.objects.all()
         return Usuario.objects.filter(id=user.id)
 
-
+# --- VISTA DE RESERVAS (BLINDADA) ---
 class ReservaViewSet(viewsets.ModelViewSet):
     queryset = Reserva.objects.all()
     serializer_class = ReservaSerializer
@@ -45,27 +46,27 @@ class ReservaViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
 
-        # --- BLINDAJE DE SEGURIDAD ---
+        # --- CANDADO DE SEGURIDAD DE IDENTIDAD ---
         
         if user.is_superuser:
-            # CASO 1: EL JEFE (ADMIN)
-            # Confiamos en él. Si eligió un maestro en el formulario, lo respetamos.
-            # Solo añadimos la firma de "creado_por".
+            # CASO 1: EL ADMINISTRADOR
+            # Confiamos en él. Si eligió un maestro diferente en el formulario, lo respetamos.
+            # Solo firmamos quién creó el registro.
             serializer.save(creado_por=user)
         else:
-            # CASO 2: EL MAESTRO (USUARIO MORTAL)
-            # No confiamos en lo que envíe en el campo 'maestro'. 
-            # Forzamos que la reserva sea para SU perfil vinculado.
+            # CASO 2: EL MAESTRO (USUARIO ESTÁNDAR)
+            # No confiamos en el dato 'maestro' que viene del frontend.
+            # Forzamos que la reserva sea para SU propio perfil vinculado.
             
-            # Verificamos si existe el vínculo que creamos en models.py (related_name='perfil_maestro')
+            # Verificamos el vínculo OneToOne (related_name='perfil_maestro')
             if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
                 serializer.save(
                     creado_por=user,
-                    maestro=user.perfil_maestro  # <--- AQUÍ ESTÁ EL CANDADO: Sobreescribimos el maestro
+                    maestro=user.perfil_maestro  # <--- AQUÍ SE SOBREESCRIBE EL MAESTRO
                 )
             else:
-                # Si el usuario existe pero no está vinculado a ningún maestro, bloqueamos la acción.
-                raise ValidationError({"detail": "Error de Seguridad: Tu usuario no está vinculado a un perfil de Maestro válido."})
+                # Si el usuario existe pero no está vinculado a la tabla Maestro
+                raise ValidationError({"detail": "Error de Seguridad: Tu cuenta de usuario no está vinculada a ningún perfil de Maestro activo."})
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -101,7 +102,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(sala__clave_sala=sala_id)
 
         return queryset
-    
+
 # --- VIEWSET DE REPORTES ---
 class ReporteViewSet(viewsets.ModelViewSet):
     """
@@ -112,29 +113,17 @@ class ReporteViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
     def get_queryset(self):
-        """
-        Regla de Escalabilidad:
-        Un administrador solo puede ver los reportes de SU propia división.
-        """
         user = self.request.user
         
-        # Validación de seguridad: Si el usuario no tiene división asignada (raro, pero posible),
-        # retornamos una lista vacía para evitar errores o fugas de datos.
         if not hasattr(user, 'division') or not user.division:
             return Reporte.objects.none()
 
-        # Filtro base: Solo reportes de mi división
         queryset = Reporte.objects.filter(division=user.division)
 
-        # --- FILTROS DE INTELIGENCIA DE NEGOCIOS (BI) ---
-        # Permite al Frontend filtrar sin descargar todo
-        
-        # 1. Filtrar por Tipo (Ej: ?tipo=OCUPACION)
         tipo = self.request.query_params.get('tipo')
         if tipo:
             queryset = queryset.filter(tipo=tipo)
 
-        # 2. Filtrar por año/mes de generación (Ej: ?anio=2025)
         anio = self.request.query_params.get('anio')
         if anio:
             queryset = queryset.filter(fecha_generacion__year=anio)
@@ -142,20 +131,32 @@ class ReporteViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-fecha_generacion')
 
     def perform_create(self, serializer):
-        """
-        Automatización:
-        Al crear un reporte, asignamos automáticamente:
-        1. El usuario actual (autor).
-        2. La división del usuario actual (contexto).
-        Esto evita que el Frontend pueda falsificar estos datos.
-        """
         user = self.request.user
+        division_destino = None
+
+        if hasattr(user, 'division') and user.division:
+            division_destino = user.division
         
-        if not hasattr(user, 'division') or not user.division:
-            # Aquí podrías lanzar un ValidationError si es crítico que tenga división
-            pass 
+        # Salvavidas para SuperAdmin sin división
+        if not division_destino:
+            from .models import Division
+            division_destino = Division.objects.first()
+
+        if not division_destino:
+            raise ValidationError({"error": "No hay divisiones registradas."})
 
         serializer.save(
             usuario=user,
-            division=user.division
+            division=division_destino
         )
+
+# --- VISTA DE ALTA DE USUARIOS ---
+class RegistroUsuarioView(generics.CreateAPIView):
+    """
+    Endpoint PROTEGIDO. 
+    Solo un usuario logueado como Administrador (IsAdminUser) puede usarlo 
+    para dar de alta a un maestro y vincularlo.
+    """
+    queryset = Usuario.objects.all()
+    permission_classes = [IsAdminUser] 
+    serializer_class = RegistroMaestroSerializer

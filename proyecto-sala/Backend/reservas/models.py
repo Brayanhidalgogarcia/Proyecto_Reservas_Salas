@@ -39,16 +39,19 @@ class Sala(models.Model):
 
     def __str__(self):
         return self.nombre_sala or self.clave_sala
-
+# 1. MODELO DE MAESTRO (La "Persona")
 class Maestro(models.Model):
     matricula_m = models.CharField(max_length=20, primary_key=True, db_column='MatriculaM')
     nombre = models.CharField(max_length=40, null=True, blank=True, db_column='Nombre')
     apellido_p = models.CharField(max_length=84, null=True, blank=True, db_column='ApellidoP')
     apellido_m = models.CharField(max_length=84, null=True, blank=True, db_column='ApellidoM')
-    division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
+    
+    # Movimos el teléfono aquí para centralizar la información de contacto
+    telefono = models.CharField(max_length=20, null=True, blank=True, db_column='Telefono')
 
-    # --- NUEVO CAMPO: VINCULACIÓN CON USUARIO ---
-    # Usamos 'Usuario' entre comillas porque el modelo Usuario se define más abajo.
+    division = models.ForeignKey('Division', on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
+
+    # VINCULACIÓN: Un maestro puede tener (o no) un usuario para entrar al sistema
     usuario = models.OneToOneField(
         'Usuario', 
         on_delete=models.SET_NULL, 
@@ -62,36 +65,27 @@ class Maestro(models.Model):
         db_table = 'maestro'
 
     def __str__(self):
-        return f"{self.nombre} {self.apellido_p}"
+        return f"{self.nombre} {self.apellido_p} ({self.matricula_m})"
 
 
-# 2. MODELO DE USUARIO PERSONALIZADO
-
+# 2. MODELO DE USUARIO (La "Credencial")
 class Usuario(AbstractUser):
-    # Desactivamos los nombres por defecto de Django
+    # Desactivamos los nombres por defecto de Django porque usaremos los del Maestro
     first_name = None
     last_name = None
 
-    # Campos Personalizados
+    # Solo conservamos lo indispensable para Auth
     email = models.EmailField(unique=True, db_column='Email')
-    matricula_ud = models.CharField(max_length=20, null=True, blank=True, db_column='MatriculaUD')
-    
-    # Nombre Atomizado
-    nombres = models.CharField(max_length=40, null=True, blank=True, db_column='Nombres')
-    apellido_paterno = models.CharField(max_length=40, null=True, blank=True, db_column='ApellidoPaterno')
-    apellido_materno = models.CharField(max_length=40, null=True, blank=True, db_column='ApellidoMaterno')
-    
-    telefono = models.CharField(max_length=20, null=True, blank=True, db_column='Telefono')
-    
-    # Relación con División
-    division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
+
+    # NOTA: Eliminamos matricula_ud, nombres, apellidos, division y telefono.
+    # Ahora esos datos se consultan a través de la relación: usuario.perfil_maestro.nombre
 
     class Meta:
         db_table = 'usuario_sistema'
 
     def __str__(self):
-        return f"{self.nombres} {self.apellido_paterno} ({self.username})"
-
+        # Como ya no tiene nombre propio, devolvemos el usuario o el email
+        return self.username
 # 3. MODELO DE RESERVAS
 
 class Reserva(models.Model):

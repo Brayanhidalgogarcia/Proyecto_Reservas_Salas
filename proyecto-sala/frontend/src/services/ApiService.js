@@ -8,8 +8,6 @@ export const apiClient = axios.create({
 });
 
 // --- INTERCEPTOR DE SEGURIDAD (TOKEN) ---
-// Antes de enviar cualquier petición, revisa si hay un token guardado
-// y lo pega en la cabecera "Authorization".
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -23,17 +21,14 @@ apiClient.interceptors.request.use(
   }
 );
 
-// --- INTERCEPTOR DE ERRORES (Opcional pero recomendado) ---
-// Si el token venció (Error 401), podemos sacar al usuario automáticamente.
+// --- INTERCEPTOR DE ERRORES ---
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Token vencido o inválido
       console.warn("Sesión expirada. Redirigiendo al login...");
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
-      // Forzamos la recarga hacia el login para limpiar el estado
       if (window.location.pathname !== '/login') {
           window.location.href = '/login';
       }
@@ -44,8 +39,7 @@ apiClient.interceptors.response.use(
 
 export default {
 
-  
-  // Actualizamos las rutas a '/usuarios/' porque cambiamos el backend
+  // --- USUARIOS (CRUD General) ---
   obtenerUsuarios() {
     return apiClient.get('/usuarios/');
   },
@@ -60,6 +54,16 @@ export default {
   },
   eliminarUsuario(id) {
     return apiClient.delete(`/usuarios/${id}/`);
+  },
+
+  // --- GESTIÓN DE CUENTAS (ALTA ADMINISTRATIVA) ---
+  /**
+   * Registra un nuevo usuario vinculado a un maestro existente.
+   * @param {Object} datos - { username, password, matricula, email }
+   */
+  registrarUsuario(datos) {
+    // CORRECCIÓN: Apuntamos a la ruta exacta definida en urls.py
+    return apiClient.post('/admin/registro-usuario/', datos);
   },
 
   // --- DIVISIONES ---

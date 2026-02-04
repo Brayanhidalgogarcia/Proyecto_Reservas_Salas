@@ -314,7 +314,7 @@ async function cancelar(id, horarioDesc) {
         await cargarDatos();
     } catch(e) {
         const status = e.response?.status;
-        if(status === 403) alert("⛔ No tienes permiso para borrar esta reserva.");
+        if(status === 403) alert(" No tienes permiso para borrar esta reserva.");
         else alert("Error del servidor al intentar borrar.");
     }
 }

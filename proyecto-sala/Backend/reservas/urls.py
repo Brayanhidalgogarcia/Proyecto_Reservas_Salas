@@ -2,6 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 
+from reservas.views import RegistroUsuarioView
+
+
 router = DefaultRouter()
 
 # Registramos las rutas de la API
@@ -13,6 +16,8 @@ router.register(r'reservas', views.ReservaViewSet)
 router.register(r'usuarios', views.UsuarioViewSet, basename='usuario')
 router.register(r'reportes', views.ReporteViewSet, basename='reportes')
 
+
 urlpatterns = [
     path('', include(router.urls)),
+    path('admin/registro-usuario/', RegistroUsuarioView.as_view(), name='registro_usuario'),
 ]

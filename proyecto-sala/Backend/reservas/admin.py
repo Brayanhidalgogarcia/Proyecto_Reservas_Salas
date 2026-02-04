@@ -7,67 +7,88 @@ admin.site.site_header = "Administración de Salas UJAT"
 
 @admin.register(Usuario)
 class UsuarioAdmin(UserAdmin):
+    
     add_form = UsuarioCreationForm
     form = UsuarioChangeForm
     model = Usuario
     
-    # 1. QUÉ COLUMNAS VER EN LA LISTA (Tabla principal)
+    # 1. LISTA DE USUARIOS
     list_display = [
         'username', 
-        'nombres', 
-        'apellido_paterno', 
-        'matricula_ud', 
-        'division', 
-        'telefono',   # Agregado para verlo rápido en la lista
-        'is_staff'
+        'email', 
+        'is_staff', 
+        'maestro_vinculado' # La columna inteligente que creamos
     ]
     
-    search_fields = ['username', 'email', 'nombres', 'apellido_paterno', 'matricula_ud']
-    list_filter = ['division', 'is_staff', 'groups']
+    search_fields = ['username', 'email']
+    list_filter = ['is_staff', 'is_superuser', 'is_active']
 
-    # 2. QUÉ CAMPOS VER AL EDITAR UN USUARIO EXISTENTE
+    # Función para ver datos del maestro vinculado
+    def maestro_vinculado(self, obj):
+        if hasattr(obj, 'perfil_maestro') and obj.perfil_maestro:
+            return f"{obj.perfil_maestro.nombre} {obj.perfil_maestro.apellido_p} ({obj.perfil_maestro.matricula_m})"
+        return "--- Sin Vincular ---"
+    
+    maestro_vinculado.short_description = 'Docente Asignado'
+
+    # 2. EDITAR USUARIO
     fieldsets = (
         ('Cuenta', {'fields': ('username', 'password')}),
-        ('Información Personal', {
-            'fields': (
-                'nombres', 
-                'apellido_paterno', 
-                'apellido_materno', # Agregado
-                'email', 
-                'telefono'          # Agregado
-            )
-        }),
-        ('Información Académica', {
-            'fields': ('matricula_ud', 'division')
+        ('Información de Contacto', {
+            'fields': ('email',) 
         }),
         ('Permisos', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Fechas', {'fields': ('last_login', 'date_joined')}),
     )
     
-    # 3. QUÉ CAMPOS VER AL CREAR (AGREGAR) UN USUARIO NUEVO
-    # Esta es la parte crítica que fallaba antes. Aquí están TODOS tus campos.
+    # 3. AGREGAR USUARIO
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
             'fields': (
+                'matricula',
                 'username', 
                 'email', 
-                'nombres', 
-                'apellido_paterno', 
-                'apellido_materno', # Agregado
-                'matricula_ud', 
-                'division', 
-                'telefono',         # IMPORTANTE: Aquí se pide el teléfono al registrar
-                'password1', 
-                'password2'
+                'password1',  # <--- ANTES DECÍA 'password'
+                'password2' # Validación automática del form
             ),
         }),
     )
 
-# --- REGISTRO DEL RESTO DE MODELOS ---
+# --- MAESTROS (DONDE VIVE LA INFO REAL) ---
+@admin.register(Maestro)
+class MaestroAdmin(admin.ModelAdmin):
+    list_display = [
+        'matricula_m', 
+        'nombre_completo', 
+        'division', 
+        'telefono', 
+        'usuario_asociado'
+    ]
+    
+    search_fields = ['matricula_m', 'nombre', 'apellido_p']
+    list_filter = ['division']
+    
+    # Aquí puedes editar todo
+    fields = (
+        ('matricula_m', 
+        'nombre', 
+        'apellido_p', 
+        'apellido_m',
+        'telefono',
+        'division',
+        'usuario') # Aquí vinculas el usuario manualmente si quieres
+    )
+
+    def nombre_completo(self, obj):
+        return f"{obj.nombre} {obj.apellido_p} {obj.apellido_m or ''}"
+    
+    def usuario_asociado(self, obj):
+        return obj.usuario.username if obj.usuario else "❌ Sin Usuario"
+
+# --- OTROS MODELOS ---
 admin.site.register(Division)
 admin.site.register(Asignatura)
 admin.site.register(Sala)
-admin.site.register(Maestro)
 admin.site.register(Reserva)
 admin.site.register(Reporte)

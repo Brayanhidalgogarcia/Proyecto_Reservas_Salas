@@ -11,18 +11,34 @@ from django.utils import timezone
 # --- PASO 1.1: IDENTIDAD EN EL LOGIN ---
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        # Obtenemos la respuesta original (access y refresh tokens)
+        # 1. Obtenemos los tokens básicos (access y refresh)
         data = super().validate(attrs)
         
-        # Agregamos los datos CRÍTICOS para el análisis de seguridad en Frontend
+        # 2. Datos básicos de la cuenta
         data['user_id'] = self.user.id
         data['username'] = self.user.username
         data['is_superuser'] = self.user.is_superuser
-        # data['division'] = self.user.division.nombre_division if self.user.division else None
         
+        # 3. RECUPERACIÓN INTELIGENTE DE DATOS (NUEVA LÓGICA)
+        # Intentamos buscar si este usuario tiene un maestro vinculado
+        try:
+            # Accedemos a la relación inversa definida en models.py (related_name='perfil_maestro')
+            maestro = self.user.perfil_maestro
+            
+            # Si existe el maestro, sacamos sus datos reales
+            if maestro:
+                data['nombre_completo'] = f"{maestro.nombre} {maestro.apellido_p}"
+                # Validamos que tenga división asignada antes de acceder a su nombre
+                data['division'] = maestro.division.nombre_division if maestro.division else None
+            
+        except Exception:
+            # CASO ADMIN PURO O USUARIO SIN VINCULAR:
+            # Si entra aquí es porque self.user.perfil_maestro no existe.
+            # Devolvemos valores neutros para que el frontend no falle.
+            data['nombre_completo'] = self.user.username # Usamos el usuario como nombre
+            data['division'] = None
+
         return data
-
-
 class UsuarioSerializer(serializers.ModelSerializer):
     division_nombre = serializers.ReadOnlyField(source='division.nombre_division')
 
@@ -173,3 +189,49 @@ class ReporteSerializer(serializers.ModelSerializer):
         # Estos campos NO se aceptan en el JSON de entrada.
         # Se llenan automáticamente en el Backend (perform_create).
         read_only_fields = ['usuario', 'division', 'fecha_generacion']
+        
+# --- SERIALIZER PARA REGISTRO DE USUARIOS (ALTA) ---
+
+
+class RegistroMaestroSerializer(serializers.ModelSerializer):
+    # Campo auxiliar para buscar al maestro (no se guarda en Usuario)
+    matricula = serializers.CharField(write_only=True, required=True)
+    password = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = Usuario
+        # LIMPIEZA: Solo pedimos lo necesario para la cuenta
+        fields = ['username', 'email', 'password', 'matricula']
+
+    def validate_matricula(self, value):
+        """
+        Valida que el maestro exista y no tenga usuario ya asignado.
+        """
+        try:
+            maestro = Maestro.objects.get(matricula_m=value)
+        except Maestro.DoesNotExist:
+            raise serializers.ValidationError("Error: No existe ningún maestro registrado con esta matrícula.")
+
+        if maestro.usuario is not None:
+            raise serializers.ValidationError(f"Error: El maestro {maestro.nombre} {maestro.apellido_p} ya tiene un usuario activo.")
+        
+        return value
+
+    def create(self, validated_data):
+        # 1. Separamos los datos
+        matricula = validated_data.pop('matricula')
+        password = validated_data.pop('password')
+        
+        # 2. Creamos el Usuario (Solo Auth)
+        # create_user se encarga de hashear la contraseña
+        user = Usuario.objects.create_user(
+            password=password,
+            **validated_data # Aquí va username y email
+        )
+
+        # 3. VINCULACIÓN: Asignamos este usuario al maestro existente
+        maestro = Maestro.objects.get(matricula_m=matricula)
+        maestro.usuario = user
+        maestro.save()
+
+        return user

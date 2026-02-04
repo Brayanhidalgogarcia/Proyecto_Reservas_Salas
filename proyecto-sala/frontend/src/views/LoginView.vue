@@ -1,8 +1,8 @@
 <script setup>
 import { ref } from 'vue';
-import { useRouter } from 'vue-router'; // 1. Importamos el router para redirigir
+import { useRouter } from 'vue-router';
 
-const router = useRouter(); // Inicializamos el router
+const router = useRouter();
 
 const form = ref({
   username: "", 
@@ -14,7 +14,7 @@ const error = ref(null);
 const cargando = ref(false);
 
 async function login() {
-  // Validación básica
+  // 1. Validación básica
   if (!form.value.username || !form.value.password) {
     error.value = "Por favor, completa todos los campos.";
     return;
@@ -24,7 +24,7 @@ async function login() {
   error.value = null;
 
   try {
-    // 2. Petición al Backend (Django SimpleJWT)
+    // 2. Petición al Backend
     const response = await fetch('http://127.0.0.1:8000/api/token/', {
         method: 'POST',
         headers: {
@@ -36,27 +36,31 @@ async function login() {
         })
     });
 
+    // 3. LECTURA ÚNICA DE LA RESPUESTA (Aquí estaba el error antes)
     const data = await response.json();
 
     if (response.ok) {
-        // 3. ¡Éxito! Guardamos los tokens
+        // --- CASO DE ÉXITO ---
+        
+        // Guardamos Tokens
         localStorage.setItem('access_token', data.access);
         localStorage.setItem('refresh_token', data.refresh);
         
-        // --- CAMBIO IMPORTANTE: Guardar ID y Rol ---
-        // Esto es necesario para saber si eres el dueño de una reserva
-        if (data.user_id) localStorage.setItem('user_id', data.user_id);
-        if (data.is_superuser !== undefined) localStorage.setItem('is_superuser', data.is_superuser);
+        // Guardamos Datos de Seguridad
+        localStorage.setItem('user_id', data.user_id);
+        localStorage.setItem('is_superuser', data.is_superuser); // Vital para el botón "Alta Usuario"
         
-        // Guardamos el usuario para mostrar "Hola Juan" en el futuro
-        localStorage.setItem('username', form.value.username);
+        // Guardamos Datos de Perfil (Nombre bonito y División)
+        const nombreMostrar = data.nombre_completo || data.username;
+        localStorage.setItem('nombre_usuario', nombreMostrar);
+        localStorage.setItem('user_division', data.division || '');
 
-        // 4. Redirigimos al sistema (ej. a Reservar)
-        router.push('/reservar'); 
+        // Redirección forzada para recargar el menú (Sidebar)
+        window.location.href = '/disponibilidad'; 
+
     } else {
-        // Error de credenciales (401)
-        error.value = "Usuario o contraseña incorrectos.";
-        console.error("Login fallido:", data);
+        // --- CASO DE ERROR (401, 400) ---
+        error.value = data.detail || "Usuario o contraseña incorrectos.";
     }
 
   } catch (err) {
@@ -76,7 +80,7 @@ async function login() {
     <!-- Formulario derecha -->
     <div class="right-side">
       <div class="topbar">
-        
+        <!-- Ajusta la ruta de tu logo si es diferente -->
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e9/Logo_de_la_UJAT.svg" alt="Logo UJAT">
         <span class="fw-bold fs-4">Universidad Juárez Autónoma de Tabasco</span>
       </div>
@@ -101,7 +105,7 @@ async function login() {
             <div class="d-flex justify-content-between align-items-center mb-3">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" v-model="form.remember" id="remember">
-                
+                <label class="form-check-label" for="remember">Recordarme</label>
               </div>
             </div>
 
@@ -173,7 +177,7 @@ async function login() {
   color: #333;
 }
 
-/* IMPORTANTE: Estilos globales para resetear márgenes */
+
 :global(body) {
   margin: 0;
   padding: 0;
