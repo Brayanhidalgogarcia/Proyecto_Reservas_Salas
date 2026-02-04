@@ -2,15 +2,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
-
 const HORARIO_APERTURA = 8;
 const HORARIO_CIERRE = 16;
 
-
 const currentUserId = ref(null);
 const isSuperUser = ref(false);
-const nombreUsuarioLogueado = ref('Usuario'); 
-
+const nombreUsuarioLogueado = ref('Cargando usuario...'); 
 
 const nuevaReserva = ref({
   maestro: null,
@@ -22,12 +19,10 @@ const nuevaReserva = ref({
   fin: ''     
 });
 
-
 const maestros = ref([]);
 const asignaturas = ref([]);
 const salas = ref([]);
 const reservasExistentes = ref([]);
-
 
 const cargando = ref(false);
 const enviando = ref(false);
@@ -36,8 +31,7 @@ const mensajeExito = ref(null);
 
 let socket = null;
 
-
-
+// --- GESTIÓN DE TOKEN E IDENTIDAD ---
 function obtenerIdDesdeToken() {
     const token = localStorage.getItem('access') || localStorage.getItem('token');
     if (!token) return null;
@@ -58,6 +52,7 @@ async function cargarIdentidad() {
     if (!uid) uid = obtenerIdDesdeToken();
 
     currentUserId.value = uid;
+    
     isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
 }
 
@@ -85,30 +80,35 @@ async function cargarDatos() {
         maestros.value = resMaestros.data || resMaestros;
         asignaturas.value = resAsignaturas.data || resAsignaturas;
         salas.value = resSalas.data || resSalas;
-        
         const dataReservas = resReservas.data || resReservas;
         
-       
+  
         if (!isSuperUser.value && currentUserId.value) {
             
-            
-            const maestroEncontrado = maestros.value.find(m => 
-                String(m.usuario_id) === String(currentUserId.value) || 
-                String(m.usuario) === String(currentUserId.value)
-            );
+           
+            const maestroEncontrado = maestros.value.find(m => {
+                
+                let uId = m.usuario_id || m.usuario;
+               
+                if (typeof uId === 'object' && uId !== null) {
+                    uId = uId.id;
+                }
+                return String(uId) === String(currentUserId.value);
+            });
 
             if (maestroEncontrado) {
-              
+                console.log("Maestro identificado:", maestroEncontrado.nombre);
                 nuevaReserva.value.maestro = maestroEncontrado.id || maestroEncontrado.matricula_m;
-                
-              
                 nombreUsuarioLogueado.value = `${maestroEncontrado.nombre} ${maestroEncontrado.apellido_p}`;
             } else {
+                nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro";
+                console.warn(`No se encontró un maestro vinculado al usuario ID: ${currentUserId.value}`);
                 
-                nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro vinculado";
-                console.warn("ADVERTENCIA: El usuario logueado (ID " + currentUserId.value + ") no tiene un registro de Maestro asociado en la BD.");
             }
+        } else if (isSuperUser.value) {
+            nombreUsuarioLogueado.value = "Administrador";
         }
+        
         
         reservasExistentes.value = dataReservas.map(r => {
             let sId = null;
@@ -128,8 +128,8 @@ async function cargarDatos() {
                 salaId: sId,
                 salaNombre: sNombre,
                 maestro: r.maestro_nombre || r.maestro,
-                inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) : '',
-                finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) : '',
+                inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
+                finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
                 fecha: r.inicio ? r.inicio.split('T')[0] : '',
                 creadoPor: r.creado_por_id 
             };
@@ -137,19 +137,17 @@ async function cargarDatos() {
 
     } catch (e) {
         console.error(e);
-        error.value = "Error de conexión con el servidor.";
+        error.value = "Error al cargar datos del servidor.";
     } finally {
         cargando.value = false;
     }
 }
 
 
-
 const minFecha = computed(() => new Date().toISOString().split('T')[0]);
 
 const obtenerOcupacionesSala = () => {
     if (!nuevaReserva.value.sala || !nuevaReserva.value.fecha) return [];
-    
     
     const salaObj = salas.value.find(s => (s.id || s.clave_sala) == nuevaReserva.value.sala);
     const nombreObj = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
@@ -165,19 +163,16 @@ const opcionesInicio = computed(() => {
     for(let i=HORARIO_APERTURA; i<HORARIO_CIERRE; i++) {
         horas.push(`${String(i).padStart(2,'0')}:00`);
     }
-
     if (nuevaReserva.value.fecha === minFecha.value) {
         const horaActual = new Date().getHours();
         horas = horas.filter(h => parseInt(h.split(':')[0]) > horaActual);
     }
-
     if (nuevaReserva.value.sala) {
         const ocupaciones = obtenerOcupacionesSala();
         horas = horas.filter(h => {
             return !ocupaciones.some(r => h >= r.inicioFmt && h < r.finFmt);
         });
     }
-
     return horas;
 });
 
@@ -188,7 +183,6 @@ const opcionesFin = computed(() => {
     for(let i=HORARIO_APERTURA + 1; i<=HORARIO_CIERRE; i++) {
         horas.push(`${String(i).padStart(2,'0')}:00`);
     }
-
     horas = horas.filter(h => h > nuevaReserva.value.inicio);
 
     if (nuevaReserva.value.sala) {
@@ -202,7 +196,6 @@ const opcionesFin = computed(() => {
             horas = horas.filter(h => h <= siguienteInicio);
         }
     }
-
     return horas;
 });
 
@@ -221,7 +214,6 @@ const estadoSalas = computed(() => {
         });
 
         ocupaciones.sort((a, b) => a.inicioFmt.localeCompare(b.inicioFmt));
-
         const reservaParaCancelar = ocupaciones.find(r => tengoPermisoBorrar(r));
 
         let horasOcupadas = 0;
@@ -243,28 +235,46 @@ const estadoSalas = computed(() => {
     });
 });
 
--
+
 
 async function crearReserva() {
     error.value = null;
+    mensajeExito.value = null;
+    console.log("Intentando crear reserva...", nuevaReserva.value);
 
     const f = nuevaReserva.value;
-
-    
     const esInvalido = (v) => v === null || v === undefined || v === '';
 
-    if (esInvalido(f.fecha)) { error.value = "La FECHA es obligatoria."; return; }
-    if (esInvalido(f.maestro)) { error.value = "Debes seleccionar un MAESTRO."; return; } 
-    if (esInvalido(f.sala)) { error.value = "Debes seleccionar una SALA."; return; }
-    if (esInvalido(f.asignatura)) { error.value = "Debes seleccionar una ASIGNATURA."; return; }
-    if (esInvalido(f.inicio)) { error.value = "La hora de INICIO es obligatoria."; return; }
-    if (esInvalido(f.fin)) { error.value = "La hora de FIN es obligatoria."; return; }
+    if (esInvalido(f.fecha)) { 
+        error.value = "La FECHA es obligatoria."; 
+        window.scrollTo(0,0); return; 
+    }
     
     
-
+    if (isSuperUser.value && esInvalido(f.maestro)) { 
+        error.value = "Debes seleccionar un MAESTRO."; 
+        window.scrollTo(0,0); return; 
+    }
+    
+    if (esInvalido(f.sala)) { 
+        error.value = "Debes seleccionar una SALA."; 
+        window.scrollTo(0,0); return; 
+    }
+    if (esInvalido(f.asignatura)) { 
+        error.value = "Debes seleccionar una ASIGNATURA."; 
+        window.scrollTo(0,0); return; 
+    }
+    if (esInvalido(f.inicio)) { 
+        error.value = "La hora de INICIO es obligatoria."; 
+        window.scrollTo(0,0); return; 
+    }
+    if (esInvalido(f.fin)) { 
+        error.value = "La hora de FIN es obligatoria."; 
+        window.scrollTo(0,0); return; 
+    }
+    
     enviando.value = true;
     try {
-        
         const temaLimpio = f.tema && f.tema.trim() !== '' ? f.tema : null;
 
         const payload = {
@@ -275,17 +285,37 @@ async function crearReserva() {
         };
 
         await ApiService.crearReserva(payload);
-        mensajeExito.value = "Reserva creada con éxito";
         
+        mensajeExito.value = "¡Reserva creada con éxito!";
+        window.scrollTo(0,0);
         
+       
         nuevaReserva.value.inicio = ''; 
         nuevaReserva.value.fin = '';
         nuevaReserva.value.tema = ''; 
         
         await cargarDatos();
     } catch(e) {
-        error.value = e.response?.data?.detail || "Error al crear reserva. Verifica conflictos de horario.";
-        console.error("Error reserva:", e);
+        console.error("Error completo en crearReserva:", e);
+        window.scrollTo(0,0); 
+        
+        if (e.response && e.response.data) {
+            const data = e.response.data;
+            if (data.detail) {
+                error.value = data.detail;
+            }
+            else if (data.non_field_errors) {
+                error.value = data.non_field_errors[0];
+            }
+            else {
+               
+                const primerCampo = Object.keys(data)[0];
+                const mensaje = Array.isArray(data[primerCampo]) ? data[primerCampo][0] : data[primerCampo];
+                error.value = `${primerCampo.toUpperCase()}: ${mensaje}`;
+            }
+        } else {
+            error.value = "Error de conexión o servidor no responde (Revise consola).";
+        }
     } finally {
         enviando.value = false;
     }
@@ -300,7 +330,7 @@ async function cancelar(id, horarioDesc) {
         await cargarDatos();
     } catch(e) {
         const status = e.response?.status;
-        if(status === 403) alert(" No tienes permiso para borrar esta reserva.");
+        if(status === 403) alert("No tienes permiso para borrar esta reserva.");
         else alert("Error del servidor al intentar borrar.");
     }
 }
@@ -343,7 +373,9 @@ onUnmounted(() => { if(socket) socket.close(); });
                             
                             <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
                                 <option :value="null">Seleccionar...</option>
-                                <option v-for="m in maestros" :value="m.id || m.matricula_m">{{ m.nombre }} {{ m.apellido_p }}</option>
+                                <option v-for="m in maestros" :value="m.id || m.matricula_m">
+                                    {{ m.nombre }} {{ m.apellido_p }}
+                                </option>
                             </select>
 
                             <div v-else class="input-group">
@@ -370,7 +402,7 @@ onUnmounted(() => { if(socket) socket.close(); });
 
                         <div class="mb-3">
                             <label class="form-label small fw-bold text-muted">TEMA <span class="fw-light">(Opcional)</span></label>
-                            <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="Ej. Proyección">
+                            <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
                         </div>
 
                         <div class="row g-2">

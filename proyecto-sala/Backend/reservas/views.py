@@ -10,16 +10,14 @@ from .serializers import (
     ReporteSerializer, RegistroMaestroSerializer
 )
 
-
+# --- PERMISO PERSONALIZADO ---
 class IsAdminOrReadOnly(BasePermission):
-    
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
             return True
         return request.user and request.user.is_superuser
 
-
-
+# --- VISTAS DE CATÁLOGOS ---
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
     serializer_class = DivisionSerializer
@@ -40,7 +38,7 @@ class MaestroViewSet(viewsets.ModelViewSet):
     serializer_class = MaestroSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
-
+# --- VISTA DE USUARIOS ---
 class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
     
@@ -50,7 +48,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return Usuario.objects.all()
         return Usuario.objects.filter(id=user.id)
 
-
+# --- VISTA DE RESERVAS ---
 class ReservaViewSet(viewsets.ModelViewSet):
     queryset = Reserva.objects.all()
     serializer_class = ReservaSerializer
@@ -60,28 +58,35 @@ class ReservaViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.is_superuser:
+            # CASO ADMIN: Guardamos directo
             serializer.save(creado_por=user)
         else:
+            # CASO MAESTRO: Verificación Segura con hasattr (Sin try/except)
+            # Preguntamos: ¿Este objeto user tiene el atributo 'perfil_maestro'?
             if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
                 serializer.save(
                     creado_por=user,
-                    maestro=user.perfil_maestro  
+                    maestro=user.perfil_maestro
                 )
             else:
-                raise ValidationError({"detail": "Error de Seguridad: Tu cuenta de usuario no está vinculada a ningún perfil de Maestro activo."})
-
-   
+                # Si no tiene perfil, lanzamos error controlado (400 Bad Request)
+                raise ValidationError({
+                    "detail": f"Error de Identidad: El usuario '{user.username}' no está vinculado a ningún registro de Maestro. Contacta al administrador."
+                })
+    
     def perform_update(self, serializer):
         user = self.request.user
         reserva_original = self.get_object()
 
-       
         if not user.is_superuser and reserva_original.creado_por != user:
              raise ValidationError({"detail": "No tienes permiso para editar una reserva que no es tuya."})
         
-       
         if not user.is_superuser:
-             serializer.save(maestro=user.perfil_maestro)
+             # Validación segura al editar también
+             if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
+                serializer.save(maestro=user.perfil_maestro)
+             else:
+                raise ValidationError({"detail": "Error: Usuario sin perfil de maestro vinculado."})
         else:
              serializer.save()
 
@@ -120,17 +125,16 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-
+# --- VISTA DE REPORTES ---
 class ReporteViewSet(viewsets.ModelViewSet):
-    
     serializer_class = ReporteSerializer
     permission_classes = [IsAdminUser]
 
     def get_queryset(self):
         user = self.request.user
         
-        
         division = None
+        # Búsqueda segura de la división
         if hasattr(user, 'division'): 
             division = user.division
         elif hasattr(user, 'perfil_maestro') and user.perfil_maestro:
@@ -160,21 +164,21 @@ class ReporteViewSet(viewsets.ModelViewSet):
         elif hasattr(user, 'division'):
              division_destino = user.division
 
+        # Salvavidas (Fallback)
         if not division_destino:
             from .models import Division
             division_destino = Division.objects.first()
 
         if not division_destino:
-            raise ValidationError({"error": "No hay divisiones registradas."})
+            raise ValidationError({"error": "No hay divisiones registradas en el sistema."})
 
         serializer.save(
             usuario=user,
             division=division_destino
         )
 
-
+# --- VISTA DE ALTA DE USUARIOS ---
 class RegistroUsuarioView(generics.CreateAPIView):
-    
     queryset = Usuario.objects.all()
     permission_classes = [IsAdminUser] 
     serializer_class = RegistroMaestroSerializer
