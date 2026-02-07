@@ -9,7 +9,7 @@ const checkEstadoServicio = () => {
   const ahora = new Date();
   const horaActual = ahora.getHours();
 
-  if (horaActual < 8 || horaActual >= 23) {
+  if (horaActual < 8 || horaActual >= 16) {
     servicioCerrado.value = true;
   } else {
     servicioCerrado.value = false;
@@ -363,13 +363,15 @@ onUnmounted(() => { if(socket) socket.close(); });
 <template>
   <div class="container-fluid p-4">
     
-    <div v-if="servicioCerrado" class="text-center py-5 mt-5">
-        <div class="card shadow-sm border-warning d-inline-block p-5">
-            <h1 class="display-1 text-warning"><i class="bi bi-clock-history"></i></h1>
-            <h2 class="fw-bold text-dark mt-3">Servicio Cerrado</h2>
-            <p class="text-muted fs-5">El sistema de reservas solo opera en horario laboral.</p>
-            <div class="badge bg-dark fs-6 px-3 py-2">
-                Horario: 08:00 AM - 04:00 PM
+    <div v-if="servicioCerrado" class="text-center py-5 mt-4 bg-white rounded shadow-sm border border-warning">
+       <div class="py-5">
+            <i class="bi bi-clock-history text-warning display-1"></i>
+            <h2 class="mt-4 fw-bold text-dark">Servicio Cerrado</h2>
+            <p class="text-muted fs-5">
+                El sistema de reservas y consulta solo está disponible en horario laboral.
+            </p>
+            <div class="d-inline-block bg-light px-4 py-2 rounded-pill border mt-2">
+                <span class="fw-bold text-primary">Horario de Atención:</span> 08:00 AM - 04:00 PM
             </div>
         </div>
     </div>
@@ -385,9 +387,13 @@ onUnmounted(() => { if(socket) socket.close(); });
         <div class="row">
             <div class="col-lg-4 mb-4">
                 <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white text-dark fw-bold py-3 border-bottom">
-                        <i class="bi bi-calendar-plus me-2 text-primary"></i>Nueva Reserva
+                    
+                    <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
+                        <h2 class="text-dark mb-0 me-3 fw-bold">
+                            <i class="bi bi-calendar-check text-secondary"></i> Apartar
+                        </h2>
                     </div>
+                    
                     <div class="card-body">
                         <form @submit.prevent="crearReserva">
                             <div class="mb-3">

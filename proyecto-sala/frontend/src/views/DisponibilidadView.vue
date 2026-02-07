@@ -8,7 +8,7 @@ const router = useRouter();
 
 
 const HORA_APERTURA = 8; 
-const HORA_CIERRE = 23;  
+const HORA_CIERRE = 16;  
 
 const reservaciones = ref([]);
 const salas = ref([]); 
