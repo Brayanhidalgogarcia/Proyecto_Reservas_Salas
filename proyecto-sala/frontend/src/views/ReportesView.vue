@@ -20,12 +20,10 @@ import { Bar, Pie } from 'vue-chartjs';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
-
 const vistaActual = ref('historial'); 
 const historial = ref([]);
 const cargandoHistorial = ref(false);
 const filtrosHistorial = ref({ tipo: '', anio: new Date().getFullYear() });
-
 
 const reservas = ref([]);
 const salas = ref([]);
@@ -38,7 +36,6 @@ const fechaInicio = ref('');
 const fechaFin = ref('');
 const salaSeleccionada = ref('');
 const tipoReporteGenerado = ref('GENERAL'); 
-
 
 const stats = ref({
     salaTop: 'N/A',
@@ -53,12 +50,8 @@ const chartDataSalas = ref({ labels: [], datasets: [] });
 const chartDataDias = ref({ labels: [], datasets: [] });
 const chartOptions = { responsive: true, maintainAspectRatio: false };
 
-
 onMounted(async () => {
-  
   await cargarHistorial();
-  
-  
   try {
     const res = await ApiService.obtenerSalas();
     salas.value = res.data || res;
@@ -77,11 +70,9 @@ function configurarFechasDefault() {
     fechaFin.value = new Date(ultimoDia - offset).toISOString().split('T')[0];
 }
 
-
 async function cargarHistorial() {
     cargandoHistorial.value = true;
     try {
-       
         const res = await ReportesService.obtenerReportes(filtrosHistorial.value);
         historial.value = res.data;
     } catch (e) {
@@ -102,10 +93,8 @@ async function eliminarDelHistorial(id) {
 }
 
 function descargarArchivo(url) {
-   
     if(url) window.open(url, '_blank');
 }
-
 
 async function generarAnalisisEnVivo() {
   cargando.value = true;
@@ -128,7 +117,6 @@ async function generarAnalisisEnVivo() {
         let coincideSala = true;
         if (salaSeleccionada.value) {
             const idSalaReserva = (typeof r.sala === 'object') ? r.sala.id : r.sala;
-           
             const claveSalaReserva = (typeof r.sala === 'object') ? r.sala.clave_sala : null;
             
             coincideSala = String(idSalaReserva) === String(salaSeleccionada.value) || 
@@ -148,9 +136,7 @@ async function generarAnalisisEnVivo() {
   }
 }
 
-
 function calcularEstadisticas() {
-    
     if (reservas.value.length === 0) { resetStats(); return; }
     const conteoSalas = {};
     let totalHoras = 0;
@@ -164,18 +150,20 @@ function calcularEstadisticas() {
     });
     stats.value.salaTop = getKeyWithMaxVal(conteoSalas);
     stats.value.horasTotales = totalHoras.toFixed(1);
-    
 }
+
 function getKeyWithMaxVal(obj) {
     const keys = Object.keys(obj);
     if (keys.length === 0) return 'N/A';
     return keys.reduce((a, b) => obj[a] > obj[b] ? a : b);
 }
+
 function resetStats() {
     stats.value = { salaTop: 'N/A', maestroTop: 'N/A', materiaTop: 'N/A', tasaOcupacion: '0%', horasTotales: 0, diaPico: 'N/A' };
     chartDataSalas.value = { labels: [], datasets: [] };
     chartDataDias.value = { labels: [], datasets: [] };
 }
+
 function prepararGraficos() {
     if (reservas.value.length === 0) return;
     const conteoSalas = {};
@@ -188,8 +176,57 @@ function prepararGraficos() {
         datasets: [{ label: 'Reservas', backgroundColor: '#005f86', data: Object.values(conteoSalas) }]
     };
     chartDataDias.value = { labels: [], datasets: [] }; 
-
 }
+
+
+const reporteOcupacion = computed(() => {
+    const agrupado = {};
+    reservas.value.forEach(r => {
+        const nombreSala = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala || 'Desconocido');
+        
+        if (!agrupado[nombreSala]) {
+            agrupado[nombreSala] = { nombre: nombreSala, reservas: 0, horas: 0 };
+        }
+        
+        agrupado[nombreSala].reservas += 1;
+        
+        const ini = new Date(r.inicio);
+        const fin = new Date(r.fin);
+        const diff = (fin - ini) / (1000 * 60 * 60); // Horas
+        if (!isNaN(diff)) agrupado[nombreSala].horas += diff;
+    });
+    
+    
+    return Object.values(agrupado).sort((a, b) => b.horas - a.horas);
+});
+
+const reporteDocente = computed(() => {
+    const agrupado = {};
+    reservas.value.forEach(r => {
+        const nombreMaestro = r.maestro_nombre || r.maestro || 'Desconocido';
+        const materia = (typeof r.asignatura === 'object') ? r.asignatura.nombre_asignatura : r.asignatura;
+        
+        if (!agrupado[nombreMaestro]) {
+            agrupado[nombreMaestro] = { nombre: nombreMaestro, materias: new Set(), horas: 0, reservas: 0 };
+        }
+        
+        agrupado[nombreMaestro].reservas += 1;
+        if (materia) agrupado[nombreMaestro].materias.add(materia);
+        
+        const ini = new Date(r.inicio);
+        const fin = new Date(r.fin);
+        const diff = (fin - ini) / (1000 * 60 * 60);
+        if (!isNaN(diff)) agrupado[nombreMaestro].horas += diff;
+    });
+    
+    
+    return Object.values(agrupado)
+        .map(item => ({
+            ...item,
+            materiasStr: Array.from(item.materias).join(', ') || 'Varias'
+        }))
+        .sort((a, b) => b.reservas - a.reservas);
+});
 
 const generarBlobPDF = async () => {
     const elemento = document.getElementById('reporte-imprimible');
@@ -211,11 +248,9 @@ async function guardarReporteEnSistema() {
 
     cargandoAccion.value = true;
     try {
-        
         const pdfBlob = await generarBlobPDF();
         const archivoFile = new File([pdfBlob], `Reporte_${Date.now()}.pdf`, { type: "application/pdf" });
-
-       
+        
         const payload = {
             titulo: `Reporte ${fechaInicio.value} al ${fechaFin.value}`,
             tipo: tipoReporteGenerado.value, 
@@ -223,12 +258,9 @@ async function guardarReporteEnSistema() {
             fecha_fin_datos: fechaFin.value,
             archivo: archivoFile
         };
-
-       
+        
         await ReportesService.crearReporte(payload);
-        
         mensajeExito.value = "Reporte guardado exitosamente en la base de datos.";
-        
         
         setTimeout(() => {
             mensajeExito.value = null;
@@ -243,7 +275,6 @@ async function guardarReporteEnSistema() {
         cargandoAccion.value = false;
     }
 }
-
 
 const descargarPDFLocal = async () => {
     cargandoAccion.value = true;
@@ -274,7 +305,6 @@ function formatDateTime(dateTimeString) {
             <h2 class="text-dark fw-bold mb-0">
                 <i class="bi bi-folder2-open text-primary me-2"></i>Gestión de Reportes
             </h2>
-            
         </div>
         
         <div class="btn-group">
@@ -350,7 +380,6 @@ function formatDateTime(dateTimeString) {
                             
                             <td class="text-end">
                                 <div class="d-flex justify-content-end gap-2">
-                                    
                                     <a 
                                         v-if="rep.archivo" 
                                         :href="rep.archivo" 
@@ -395,17 +424,17 @@ function formatDateTime(dateTimeString) {
                         <input type="date" v-model="fechaFin" class="form-control">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-muted">Categoría (Para BD)</label>
-                        <select v-model="tipoReporteGenerado" class="form-select">
-                            <option value="GENERAL">General</option>
-                            <option value="OCUPACION">Ocupación</option>
-                            <option value="DOCENTE">Docente</option>
+                        <label class="form-label small fw-bold text-muted">Categoría de Reporte</label>
+                        <select v-model="tipoReporteGenerado" class="form-select border-primary fw-bold text-muted">
+                            <option value="GENERAL">General (Bitácora)</option>
+                            <option value="OCUPACION">Ocupación (Por Sala)</option>
+                            <option value="DOCENTE">Productividad Docente</option>
                         </select>
                     </div>
                     <div class="col-md-3">
                         <button @click="generarAnalisisEnVivo" class="btn btn-primary w-100" :disabled="cargando">
                             <span v-if="cargando" class="spinner-border spinner-border-sm me-2"></span>
-                            {{ cargando ? 'Procesando...' : 'Visualizar Datos' }}
+                            {{ cargando ? 'Procesando...' : 'Analizar Datos' }}
                         </button>
                     </div>
                 </div>
@@ -429,57 +458,111 @@ function formatDateTime(dateTimeString) {
             <div id="reporte-imprimible" class="bg-white p-4 rounded border">
                 
                 <div class="text-center mb-4">
-                    <h4 class="fw-bold">Reporte de Actividad - Dacity</h4>
-                    <p class="text-muted">Del {{ fechaInicio }} al {{ fechaFin }}</p>
+                    <h4 class="fw-bold text-uppercase">
+                        {{ tipoReporteGenerado === 'GENERAL' ? 'Reporte General de Actividad' : (tipoReporteGenerado === 'OCUPACION' ? 'Reporte de Ocupación de Salas' : 'Reporte de Productividad Docente') }}
+                    </h4>
+                    <p class="text-muted">Período: {{ fechaInicio }} al {{ fechaFin }}</p>
                 </div>
 
                 <div class="row g-4 mb-4">
                     <div class="col-md-3">
-                        <div class="card h-100 border-start border-4 border-primary">
+                        <div class="card h-100 border-start border-4 border-primary shadow-sm">
                             <div class="card-body">
-                                <small class="text-muted text-uppercase">Sala Top</small>
+                                <small class="text-muted text-uppercase">Sala Más Usada</small>
                                 <h4 class="fw-bold text-primary">{{ stats.salaTop }}</h4>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <div class="card h-100 border-start border-4 border-info">
+                        <div class="card h-100 border-start border-4 border-info shadow-sm">
                             <div class="card-body">
                                 <small class="text-muted text-uppercase">Horas Totales</small>
-                                <h4 class="fw-bold text-info">{{ stats.horasTotales }}</h4>
+                                <h4 class="fw-bold text-info">{{ stats.horasTotales }} hrs</h4>
                             </div>
                         </div>
                     </div>
+                    <div class="col-md-6 d-flex align-items-center justify-content-end text-muted small">
+                        Generado el: {{ new Date().toLocaleDateString() }}
                     </div>
+                </div>
 
-                <div class="row mb-4">
-                    <div class="col-md-8">
-                        <div class="card border-0 h-100">
-                            <div class="card-body" style="height: 300px;">
+                <div class="row mb-5">
+                    <div class="col-12">
+                        <div class="card border-0">
+                            <div class="card-body" style="height: 250px;">
                                 <Bar :data="chartDataSalas" :options="chartOptions" />
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
-                         </div>
                 </div>
                 
-                <table class="table table-sm table-striped small">
-                    <thead>
-                        <tr><th>Fecha</th><th>Sala</th><th>Maestro</th><th>Horario</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="r in reservas.slice(0, 15)" :key="r.id">
-                            <td>{{ new Date(r.inicio).toLocaleDateString() }}</td>
-                            <td>{{ (typeof r.sala === 'object') ? r.sala.nombre_sala : r.sala }}</td>
-                            <td>{{ r.maestro_nombre || r.maestro }}</td>
-                            <td>{{ new Date(r.inicio).toLocaleTimeString() }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p v-if="reservas.length > 15" class="text-center text-muted fst-italic mt-2">
-                    ... y {{ reservas.length - 15 }} registros más.
-                </p>
+                <div v-if="tipoReporteGenerado === 'GENERAL'">
+                    <h5 class="fw-bold border-bottom pb-2 mb-3">Bitácora de Reservas</h5>
+                    <table class="table table-sm table-striped small">
+                        <thead class="table-dark">
+                            <tr><th>Fecha</th><th>Sala</th><th>Maestro</th><th>Horario</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="r in reservas.slice(0, 50)" :key="r.id">
+                                <td>{{ new Date(r.inicio).toLocaleDateString() }}</td>
+                                <td>{{ (typeof r.sala === 'object') ? r.sala.nombre_sala : r.sala }}</td>
+                                <td>{{ r.maestro_nombre || r.maestro }}</td>
+                                <td>{{ new Date(r.inicio).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }} - {{ new Date(r.fin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-if="reservas.length > 50" class="text-center text-muted fst-italic mt-2">
+                        ... visualizando los primeros 50 de {{ reservas.length }} registros.
+                    </p>
+                </div>
+
+                <div v-else-if="tipoReporteGenerado === 'OCUPACION'">
+                    <h5 class="fw-bold border-bottom pb-2 mb-3">Detalle de Uso por Sala</h5>
+                    <table class="table table-striped table-hover align-middle">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Sala</th>
+                                <th class="text-center">Reservas Totales</th>
+                                <th class="text-center">Horas Acumuladas</th>
+                                <th class="text-center">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in reporteOcupacion" :key="item.nombre">
+                                <td class="fw-bold">{{ item.nombre }}</td>
+                                <td class="text-center">{{ item.reservas }}</td>
+                                <td class="text-center fw-bold text-primary">{{ item.horas.toFixed(1) }} h</td>
+                                <td class="text-center">
+                                    <span v-if="item.horas > 20" class="badge bg-success">Alto Uso</span>
+                                    <span v-else-if="item.horas > 5" class="badge bg-warning text-dark">Medio</span>
+                                    <span v-else class="badge bg-secondary">Bajo</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div v-else-if="tipoReporteGenerado === 'DOCENTE'">
+                    <h5 class="fw-bold border-bottom pb-2 mb-3">Productividad por Docente</h5>
+                    <table class="table table-striped table-hover align-middle">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Docente</th>
+                                <th>Asignaturas Impartidas</th>
+                                <th class="text-center">Sesiones</th>
+                                <th class="text-center">Horas Totales</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in reporteDocente" :key="item.nombre">
+                                <td class="fw-bold text-primary">{{ item.nombre }}</td>
+                                <td class="small text-muted">{{ item.materiasStr }}</td>
+                                <td class="text-center">{{ item.reservas }}</td>
+                                <td class="text-center fw-bold">{{ item.horas.toFixed(1) }} h</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
             </div>
         </div>

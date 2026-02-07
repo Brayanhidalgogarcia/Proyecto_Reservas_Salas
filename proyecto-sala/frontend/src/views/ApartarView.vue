@@ -2,6 +2,20 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
+
+const servicioCerrado = ref(false); 
+
+const checkEstadoServicio = () => {
+  const ahora = new Date();
+  const horaActual = ahora.getHours();
+
+  if (horaActual < 8 || horaActual >= 23) {
+    servicioCerrado.value = true;
+  } else {
+    servicioCerrado.value = false;
+  }
+};
+
 const HORARIO_APERTURA = 8;
 const HORARIO_CIERRE = 16;
 
@@ -338,6 +352,7 @@ async function cancelar(id, horarioDesc) {
 function seleccionar(id) { nuevaReserva.value.sala = id; }
 
 onMounted(() => {
+    checkEstadoServicio();
     cargarDatos();
     socket = new WebSocket('ws://127.0.0.1:8000/ws/reservas/');
     socket.onmessage = () => { cargarDatos(); };
@@ -348,139 +363,152 @@ onUnmounted(() => { if(socket) socket.close(); });
 <template>
   <div class="container-fluid p-4">
     
-    <div v-if="error" class="alert alert-danger shadow-sm border-0 d-flex align-items-center">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
-    </div>
-    <div v-if="mensajeExito" class="alert alert-success shadow-sm border-0 d-flex align-items-center">
-        <i class="bi bi-check-circle-fill me-2"></i> {{ mensajeExito }}
-    </div>
-
-    <div class="row">
-        <div class="col-lg-4 mb-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white text-dark fw-bold py-3 border-bottom">
-                    <i class="bi bi-calendar-plus me-2 text-primary"></i>Nueva Reserva
-                </div>
-                <div class="card-body">
-                    <form @submit.prevent="crearReserva">
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">FECHA</label>
-                            <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">MAESTRO</label>
-                            
-                            <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
-                                <option :value="null">Seleccionar...</option>
-                                <option v-for="m in maestros" :value="m.id || m.matricula_m">
-                                    {{ m.nombre }} {{ m.apellido_p }}
-                                </option>
-                            </select>
-
-                            <div v-else class="input-group">
-                                <span class="input-group-text bg-light text-primary"><i class="bi bi-person-fill"></i></span>
-                                <input type="text" class="form-control bg-light" :value="nombreUsuarioLogueado" disabled readonly>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">SALA</label>
-                            <select class="form-select" v-model="nuevaReserva.sala">
-                                <option :value="null">Seleccionar...</option>
-                                <option v-for="s in salas" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">ASIGNATURA</label>
-                            <select class="form-select" v-model="nuevaReserva.asignatura">
-                                <option :value="null">Seleccionar...</option>
-                                <option v-for="a in asignaturas" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">TEMA <span class="fw-light">(Opcional)</span></label>
-                            <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
-                        </div>
-
-                        <div class="row g-2">
-                            <div class="col-6">
-                                <label class="form-label small fw-bold text-muted">INICIO</label>
-                                <select class="form-select" v-model="nuevaReserva.inicio">
-                                    <option v-for="h in opcionesInicio" :value="h">{{ h }}</option>
-                                </select>
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label small fw-bold text-muted">FIN</label>
-                                <select class="form-select" v-model="nuevaReserva.fin">
-                                    <option v-for="h in opcionesFin" :value="h">{{ h }}</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <button class="btn btn-primary w-100 mt-4 py-2 fw-bold" :disabled="enviando">
-                            <span v-if="enviando" class="spinner-border spinner-border-sm me-2"></span>
-                            {{ enviando ? 'Reservando...' : 'Confirmar Reserva' }}
-                        </button>
-                    </form>
-                </div>
+    <div v-if="servicioCerrado" class="text-center py-5 mt-5">
+        <div class="card shadow-sm border-warning d-inline-block p-5">
+            <h1 class="display-1 text-warning"><i class="bi bi-clock-history"></i></h1>
+            <h2 class="fw-bold text-dark mt-3">Servicio Cerrado</h2>
+            <p class="text-muted fs-5">El sistema de reservas solo opera en horario laboral.</p>
+            <div class="badge bg-dark fs-6 px-3 py-2">
+                Horario: 08:00 AM - 04:00 PM
             </div>
         </div>
+    </div>
 
-        <div class="col-lg-8">
-            <div class="row g-3">
-                <div v-for="sala in estadoSalas" :key="sala.id" class="col-md-6">
-                    <div class="card h-100 shadow-sm border border-light" :class="{'bg-light': !sala.ocupado}">
-                        <div class="card-body d-flex flex-column">
+    <div v-else>
+        <div v-if="error" class="alert alert-danger shadow-sm border-0 d-flex align-items-center">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
+        </div>
+        <div v-if="mensajeExito" class="alert alert-success shadow-sm border-0 d-flex align-items-center">
+            <i class="bi bi-check-circle-fill me-2"></i> {{ mensajeExito }}
+        </div>
+
+        <div class="row">
+            <div class="col-lg-4 mb-4">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white text-dark fw-bold py-3 border-bottom">
+                        <i class="bi bi-calendar-plus me-2 text-primary"></i>Nueva Reserva
+                    </div>
+                    <div class="card-body">
+                        <form @submit.prevent="crearReserva">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">FECHA</label>
+                                <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" required>
+                            </div>
                             
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
-                                <span class="badge border" 
-                                      :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
-                                    {{ sala.agotada ? 'LLENA' : (sala.ocupado ? 'OCUPADA' : 'LIBRE') }}
-                                </span>
-                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">MAESTRO</label>
+                                
+                                <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
+                                    <option :value="null">Seleccionar...</option>
+                                    <option v-for="m in maestros" :value="m.id || m.matricula_m">
+                                        {{ m.nombre }} {{ m.apellido_p }}
+                                    </option>
+                                </select>
 
-                            <div class="flex-grow-1 mb-3">
-                                <div v-if="!sala.ocupado" class="text-center text-muted py-3 small">
-                                    <i class="bi bi-check2-circle d-block fs-4 mb-1 text-success opacity-50"></i>
-                                    Disponible todo el día
+                                <div v-else class="input-group">
+                                    <span class="input-group-text bg-light text-primary"><i class="bi bi-person-fill"></i></span>
+                                    <input type="text" class="form-control bg-light" :value="nombreUsuarioLogueado" disabled readonly>
                                 </div>
-                                <ul v-else class="list-group list-group-flush small">
-                                    <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-1 d-flex justify-content-between align-items-center border-bottom border-light">
-                                        <div class="d-flex align-items-center">
-                                            <i class="bi bi-clock me-2 text-muted"></i>
-                                            <span class="fw-semibold text-dark">{{ res.inicioFmt }} - {{ res.finFmt }}</span>
-                                        </div>
-                                        <span class="text-secondary text-truncate ms-2" style="max-width: 120px; font-size: 0.85em;">
-                                            {{ res.maestro }}
-                                        </span>
-                                    </li>
-                                </ul>
                             </div>
 
-                            <div class="d-flex gap-2 mt-auto pt-2 border-top border-light">
-                                <button 
-                                    v-if="sala.idCancelable"
-                                    @click="cancelar(sala.idCancelable, sala.descCancelable)"
-                                    class="btn btn-sm btn-outline-danger flex-grow-1"
-                                    title="Cancelar reserva"
-                                >
-                                    <i class="bi bi-trash me-1"></i> Cancelar
-                                </button>
-
-                                <button 
-                                    @click="seleccionar(sala.id)"
-                                    class="btn btn-sm btn-outline-primary"
-                                    :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
-                                    :disabled="sala.agotada"
-                                >
-                                    Usar Sala
-                                </button>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">SALA</label>
+                                <select class="form-select" v-model="nuevaReserva.sala">
+                                    <option :value="null">Seleccionar...</option>
+                                    <option v-for="s in salas" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
+                                </select>
                             </div>
 
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">ASIGNATURA</label>
+                                <select class="form-select" v-model="nuevaReserva.asignatura">
+                                    <option :value="null">Seleccionar...</option>
+                                    <option v-for="a in asignaturas" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">TEMA <span class="fw-light">(Opcional)</span></label>
+                                <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
+                            </div>
+
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small fw-bold text-muted">INICIO</label>
+                                    <select class="form-select" v-model="nuevaReserva.inicio">
+                                        <option v-for="h in opcionesInicio" :value="h">{{ h }}</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small fw-bold text-muted">FIN</label>
+                                    <select class="form-select" v-model="nuevaReserva.fin">
+                                        <option v-for="h in opcionesFin" :value="h">{{ h }}</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary w-100 mt-4 py-2 fw-bold" :disabled="enviando">
+                                <span v-if="enviando" class="spinner-border spinner-border-sm me-2"></span>
+                                {{ enviando ? 'Reservando...' : 'Confirmar Reserva' }}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="row g-3">
+                    <div v-for="sala in estadoSalas" :key="sala.id" class="col-md-6">
+                        <div class="card h-100 shadow-sm border border-light" :class="{'bg-light': !sala.ocupado}">
+                            <div class="card-body d-flex flex-column">
+                                
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
+                                    <span class="badge border" 
+                                          :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
+                                        {{ sala.agotada ? 'LLENA' : (sala.ocupado ? 'OCUPADA' : 'LIBRE') }}
+                                    </span>
+                                </div>
+
+                                <div class="flex-grow-1 mb-3">
+                                    <div v-if="!sala.ocupado" class="text-center text-muted py-3 small">
+                                        <i class="bi bi-check2-circle d-block fs-4 mb-1 text-success opacity-50"></i>
+                                        Disponible todo el día
+                                    </div>
+                                    <ul v-else class="list-group list-group-flush small">
+                                        <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-1 d-flex justify-content-between align-items-center border-bottom border-light">
+                                            <div class="d-flex align-items-center">
+                                                <i class="bi bi-clock me-2 text-muted"></i>
+                                                <span class="fw-semibold text-dark">{{ res.inicioFmt }} - {{ res.finFmt }}</span>
+                                            </div>
+                                            <span class="text-secondary text-truncate ms-2" style="max-width: 120px; font-size: 0.85em;">
+                                                {{ res.maestro }}
+                                            </span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div class="d-flex gap-2 mt-auto pt-2 border-top border-light">
+                                    <button 
+                                        v-if="sala.idCancelable"
+                                        @click="cancelar(sala.idCancelable, sala.descCancelable)"
+                                        class="btn btn-sm btn-outline-danger flex-grow-1"
+                                        title="Cancelar reserva"
+                                    >
+                                        <i class="bi bi-trash me-1"></i> Cancelar
+                                    </button>
+
+                                    <button 
+                                        @click="seleccionar(sala.id)"
+                                        class="btn btn-sm btn-outline-primary"
+                                        :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
+                                        :disabled="sala.agotada"
+                                    >
+                                        Usar Sala
+                                    </button>
+                                </div>
+
+                            </div>
                         </div>
                     </div>
                 </div>

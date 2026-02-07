@@ -36,7 +36,7 @@
                   class="form-control" 
                   v-model="formulario.matricula" 
                   required 
-                  placeholder="Ej. 19203040"
+                  placeholder=""
                 >
               </div>
               <div class="form-text small">El sistema buscará al maestro en el padrón automáticamente.</div>
@@ -49,12 +49,12 @@
 
             <div class="col-md-6">
               <label class="form-label fw-bold small text-secondary">Nombre de Usuario:</label>
-              <input type="text" class="form-control" v-model="formulario.username" required placeholder="Ej. juan.perez">
+              <input type="text" class="form-control" v-model="formulario.username" required placeholder="">
             </div>
 
             <div class="col-md-6">
               <label class="form-label fw-bold small text-secondary">Email (Opcional):</label>
-              <input type="email" class="form-control" v-model="formulario.email" placeholder="correo@institucional.mx">
+              <input type="email" class="form-control" v-model="formulario.email" placeholder="">
             </div>
 
             <div class="col-md-6">

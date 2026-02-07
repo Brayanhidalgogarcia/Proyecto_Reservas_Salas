@@ -12,7 +12,6 @@ class UsuarioAdmin(UserAdmin):
     form = UsuarioChangeForm
     model = Usuario
     
-    # 1. LISTA DE USUARIOS
     list_display = [
         'username', 
         'email', 
@@ -31,7 +30,7 @@ class UsuarioAdmin(UserAdmin):
     
     maestro_vinculado.short_description = 'Docente Asignado'
 
-    # 2. EDITAR USUARIO
+ 
     fieldsets = (
         ('Cuenta', {'fields': ('username', 'password')}),
         ('Información de Contacto', {
@@ -41,7 +40,7 @@ class UsuarioAdmin(UserAdmin):
         ('Fechas', {'fields': ('last_login', 'date_joined')}),
     )
     
-    # 3. AGREGAR USUARIO
+   
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
@@ -55,7 +54,7 @@ class UsuarioAdmin(UserAdmin):
         }),
     )
 
-# --- MAESTROS ---
+
 @admin.register(Maestro)
 class MaestroAdmin(admin.ModelAdmin):
     list_display = [

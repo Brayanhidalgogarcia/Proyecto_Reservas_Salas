@@ -45,7 +45,7 @@ class UsuarioCreationForm(UserCreationForm):
         
 
     def clean(self):
-        # Tu lógica de depuración se queda, es útil.
+        
         cleaned_data = super().clean()
         pass1 = cleaned_data.get("password1")
         pass2 = cleaned_data.get("password2")
