@@ -303,7 +303,7 @@ function formatDateTime(dateTimeString) {
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="text-dark fw-bold mb-0">
-                <i class="bi bi-folder2-open text-primary me-2"></i>Gestión de Reportes
+                <i class="bi bi-folder2-open text-primary me-2"></i>Reportes
             </h2>
         </div>
         

@@ -45,7 +45,7 @@ const mensajeExito = ref(null);
 
 let socket = null;
 
-// --- GESTIÓN DE TOKEN E IDENTIDAD ---
+
 function obtenerIdDesdeToken() {
     const token = localStorage.getItem('access') || localStorage.getItem('token');
     if (!token) return null;
@@ -362,6 +362,12 @@ onUnmounted(() => { if(socket) socket.close(); });
 
 <template>
   <div class="container-fluid p-4">
+
+    <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
+        <h2 class="text-dark mb-0 me-3 fw-bold">
+           <i class="bi bi-calendar-check text-secondary"></i> Apartar
+        </h2>
+    </div>
     
     <div v-if="servicioCerrado" class="text-center py-5 mt-4 bg-white rounded shadow-sm border border-warning">
        <div class="py-5">
@@ -388,11 +394,7 @@ onUnmounted(() => { if(socket) socket.close(); });
             <div class="col-lg-4 mb-4">
                 <div class="card shadow-sm border-0 h-100">
                     
-                    <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
-                        <h2 class="text-dark mb-0 me-3 fw-bold">
-                            <i class="bi bi-calendar-check text-secondary"></i> Apartar
-                        </h2>
-                    </div>
+                    
                     
                     <div class="card-body">
                         <form @submit.prevent="crearReserva">
