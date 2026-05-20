@@ -365,7 +365,7 @@ onUnmounted(() => { if(socket) socket.close(); });
 
     <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
         <h2 class="text-dark mb-0 me-3 fw-bold">
-           <i class="bi bi-calendar-check text-secondary"></i> Apartar
+           <i class="bi bi-calendar-check text-secondary"></i> Reservar
         </h2>
     </div>
     
@@ -436,7 +436,7 @@ onUnmounted(() => { if(socket) socket.close(); });
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">TEMA <span class="fw-light">(Opcional)</span></label>
+                                <label class="form-label small fw-bold text-muted">Nombre de la actividad <span class="fw-light">(OpC)</span></label>
                                 <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
                             </div>
 

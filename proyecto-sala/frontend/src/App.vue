@@ -79,7 +79,7 @@ const logout = () => {
               
               <li class="nav-item w-100">
                 <RouterLink to="/reservar" class="nav-link px-0 align-middle text-dark">
-                  <span class="ms-1 d-none d-sm-inline">Apartar Sala Audiovisual</span>
+                  <span class="ms-1 d-none d-sm-inline">Reservar Sala Audiovisual</span>
                 </RouterLink>
               </li>
               

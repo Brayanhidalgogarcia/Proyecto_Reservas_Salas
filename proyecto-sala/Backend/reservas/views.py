@@ -3,11 +3,11 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, BasePermission, SAFE_METHODS
 
-from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte
+from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte,Actividad
 from .serializers import (
     DivisionSerializer, AsignaturaSerializer, SalaSerializer, 
     MaestroSerializer, ReservaSerializer, UsuarioSerializer, 
-    ReporteSerializer, RegistroMaestroSerializer
+    ReporteSerializer, RegistroMaestroSerializer, ActividadSerializer
 )
 
 class IsAdminOrReadOnly(BasePermission):
@@ -30,6 +30,14 @@ class SalaViewSet(viewsets.ModelViewSet):
     queryset = Sala.objects.all()
     serializer_class = SalaSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    
+class ActividadViewSet(viewsets.ModelViewSet):
+    serializer_class = ActividadSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        
+        return Actividad.objects.filter(activo=True)
 
 class MaestroViewSet(viewsets.ModelViewSet):
     queryset = Maestro.objects.all()
@@ -46,7 +54,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return Usuario.objects.all()
         return Usuario.objects.filter(id=user.id)
 
-
 class ReservaViewSet(viewsets.ModelViewSet):
     queryset = Reserva.objects.all()
     serializer_class = ReservaSerializer
@@ -56,17 +63,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.is_superuser:
-          
             serializer.save(creado_por=user)
         else:
-          
             if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
                 serializer.save(
                     creado_por=user,
                     maestro=user.perfil_maestro
                 )
             else:
-                
                 raise ValidationError({
                     "detail": f"Error de Identidad: El usuario '{user.username}' no está vinculado a ningún registro de Maestro. Contacta al administrador."
                 })
@@ -79,7 +83,6 @@ class ReservaViewSet(viewsets.ModelViewSet):
              raise ValidationError({"detail": "No tienes permiso para editar una reserva que no es tuya."})
         
         if not user.is_superuser:
-             
              if hasattr(user, 'perfil_maestro') and user.perfil_maestro:
                 serializer.save(maestro=user.perfil_maestro)
              else:
@@ -102,11 +105,15 @@ class ReservaViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
-        queryset = Reserva.objects.all().order_by('-inicio') 
+        
+        queryset = Reserva.objects.select_related(
+            'sala', 'maestro', 'asignatura', 'actividad'
+        ).all().order_by('-inicio') 
         
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         fecha_fin = self.request.query_params.get('fecha_fin')
         sala_id = self.request.query_params.get('sala')
+        actividad_id = self.request.query_params.get('actividad') 
         
         if fecha_inicio and fecha_fin:
             try:
@@ -119,6 +126,10 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         if sala_id:
             queryset = queryset.filter(sala__clave_sala=sala_id)
+
+        
+        if actividad_id:
+            queryset = queryset.filter(actividad_id=actividad_id)
 
         return queryset
 

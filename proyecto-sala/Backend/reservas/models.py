@@ -7,6 +7,18 @@ from django.dispatch import receiver
 
 # 1. MODELOS DE CATÁLOGOS
 
+class Actividad(models.Model):
+    
+    nombre_actividad = models.CharField(max_length=50, unique=True, db_column='NombreActividad')
+    activo = models.BooleanField(default=True, db_column='Activo')
+
+    class Meta:
+        db_table = 'actividad'
+
+    def __str__(self):
+        return self.nombre_actividad
+    
+
 class Division(models.Model):
     clave_division = models.CharField(max_length=20, primary_key=True, db_column='ClaveDivision')
     nombre_division = models.CharField(max_length=80, null=True, blank=True, db_column='NombreDivision')
@@ -86,19 +98,19 @@ class Usuario(AbstractUser):
         return self.username
     
 # 3. MODELO DE RESERVAS
-
 class Reserva(models.Model):
+    
+    actividad = models.ForeignKey(Actividad, on_delete=models.PROTECT, db_column='Actividad_ID')
     maestro = models.ForeignKey(Maestro, on_delete=models.CASCADE, null=True, blank=True, db_column='MatriculaM')
     asignatura = models.ForeignKey(Asignatura, on_delete=models.CASCADE, null=True, blank=True, db_column='ClaveAsignatura')
     sala = models.ForeignKey(Sala, on_delete=models.CASCADE, null=True, blank=True, db_column='ClaveSala')
     tema = models.CharField(max_length=80, null=True, blank=True, db_column='Tema')
-
+    requerimientos = models.TextField(null=True, blank=True, db_column='Requerimientos')
     inicio = models.DateTimeField(db_column='FechaHoraInicio') 
     fin = models.DateTimeField(db_column='FechaHoraFin') 
     
     fecha_apartado = models.DateTimeField(auto_now_add=True)
-    
-    creado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='reservas_creadas')
+    creado_por = models.ForeignKey('Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='reservas_creadas')
 
     class Meta:
         db_table = 'reserva'

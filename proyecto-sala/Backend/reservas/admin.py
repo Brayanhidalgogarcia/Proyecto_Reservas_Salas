@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Division, Asignatura, Sala, Maestro, Reserva, Reporte
+from .models import Usuario, Division, Asignatura, Sala, Maestro, Reserva, Reporte, Actividad
 from .forms import UsuarioCreationForm, UsuarioChangeForm
 
 admin.site.site_header = "Administración de Salas UJAT"
@@ -90,3 +90,4 @@ admin.site.register(Asignatura)
 admin.site.register(Sala)
 admin.site.register(Reserva)
 admin.site.register(Reporte)
+admin.site.register(Actividad) 

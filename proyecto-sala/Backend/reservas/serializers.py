@@ -2,14 +2,14 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (Division, Asignatura, Sala, Maestro, 
                      Reserva, 
-                     Usuario,Reporte)
+                     Usuario,Reporte,Actividad)
 from django.utils import timezone
 
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        #
+       
         data = super().validate(attrs)
         
         
@@ -67,6 +67,11 @@ class SalaSerializer(serializers.ModelSerializer):
         response = super().to_representation(instance)
         response['division'] = str(instance.division) 
         return response
+    
+class ActividadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Actividad
+        fields = ['id', 'nombre_actividad', 'activo']
 
 
 class MaestroSerializer(serializers.ModelSerializer):
@@ -85,23 +90,46 @@ class MaestroSerializer(serializers.ModelSerializer):
 
 class ReservaSerializer(serializers.ModelSerializer):
     division = serializers.StringRelatedField(source='sala.division', read_only=True)
-    
-    
     creado_por_id = serializers.ReadOnlyField(source='creado_por.id')
 
     class Meta:
         model = Reserva
-        fields = ['id', 'maestro', 'asignatura', 'sala', 'division', 'tema', 'inicio', 'fin', 'fecha_apartado', 'creado_por_id']
+        
+        fields = [
+            'id', 'actividad', 'maestro', 'asignatura', 'sala', 
+            'division', 'tema', 'requerimientos', 'inicio', 'fin', 
+            'fecha_apartado', 'creado_por_id'
+        ]
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        response['maestro'] = str(instance.maestro)
-        response['asignatura'] = str(instance.asignatura)
-        response['sala'] = str(instance.sala)
+        
+        
+        response['actividad'] = str(instance.actividad) if instance.actividad else None
+        response['maestro'] = str(instance.maestro) if instance.maestro else None
+        response['asignatura'] = str(instance.asignatura) if instance.asignatura else None
+        response['sala'] = str(instance.sala) if instance.sala else None
+        
         return response
 
     def validate(self, data):
-        
+       
+        actividad = data.get('actividad')
+        asignatura = data.get('asignatura')
+
+        if actividad:
+           
+            if actividad.nombre_actividad == 'Asignatura':
+                if not asignatura:
+                    
+                    raise serializers.ValidationError({
+                        "asignatura": "Es obligatorio seleccionar una asignatura para este tipo de actividad."
+                    })
+            else:
+                
+                data['asignatura'] = None
+
+     
         sala = data.get('sala')
         inicio = data.get('inicio')
         fin = data.get('fin')
@@ -128,6 +156,7 @@ class ReservaSerializer(serializers.ModelSerializer):
                 "detail": "El horario de servicio es exclusivamente de 08:00 a 16:00."
             })
 
+       
         qs = Reserva.objects.filter(
             sala=sala,
             inicio__lt=fin,
