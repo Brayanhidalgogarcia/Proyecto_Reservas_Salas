@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api/v1/', 
+  baseURL: 'http://127.0.0.1:8000/api/v1/',
   headers: {
     'Content-Type': 'application/json'
   }
@@ -30,7 +30,7 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);
@@ -39,11 +39,11 @@ apiClient.interceptors.response.use(
 
 export default {
 
- 
+
   obtenerUsuarios() {
     return apiClient.get('/usuarios/');
   },
-  obtenerUsuario(id) { 
+  obtenerUsuario(id) {
     return apiClient.get(`/usuarios/${id}/`);
   },
   crearUsuario(datosUsuario) {
@@ -56,13 +56,13 @@ export default {
     return apiClient.delete(`/usuarios/${id}/`);
   },
 
-  
+
   /**
    
    * @param {Object} datos - { username, password, matricula, email }
    */
   registrarUsuario(datos) {
-    
+
     return apiClient.post('/admin/registro-usuario/', datos);
   },
 
@@ -70,7 +70,7 @@ export default {
   obtenerDivisiones() {
     return apiClient.get('/divisiones/');
   },
-  obtenerDivision(claveDivision) { 
+  obtenerDivision(claveDivision) {
     return apiClient.get(`/divisiones/${claveDivision}/`);
   },
   crearDivision(datosDivision) {
@@ -83,11 +83,34 @@ export default {
     return apiClient.delete(`/divisiones/${claveDivision}/`);
   },
 
+  obtenerEdificios() {
+    return apiClient.get('/edificios/');
+  },
+
+  obtenerEdificio(id) { 
+    return apiClient.get(`/edificios/${id}/`); 
+  },
+
+  crearEdificio(datosEdificio) { 
+    return apiClient.post('/edificios/', datosEdificio); 
+  },
+
+  actualizarEdificio(id, datosEdificio) { 
+    return apiClient.put(`/edificios/${id}/`, datosEdificio); 
+  },
+
+  eliminarEdificio(id) { 
+    return apiClient.delete(`/edificios/${id}/`); 
+  },
+
+
+  obtenerActividades() { return apiClient.get('/actividades/'); },
+ 
 
   obtenerAsignaturas() {
     return apiClient.get('/asignaturas/');
   },
-  obtenerAsignatura(claveAsignatura) { 
+  obtenerAsignatura(claveAsignatura) {
     return apiClient.get(`/asignaturas/${claveAsignatura}/`);
   },
   crearAsignatura(datosAsignatura) {
@@ -100,11 +123,11 @@ export default {
     return apiClient.delete(`/asignaturas/${claveAsignatura}/`);
   },
 
-  
+
   obtenerSalas() {
     return apiClient.get('/salas/');
   },
-  obtenerSala(claveSala) { 
+  obtenerSala(claveSala) {
     return apiClient.get(`/salas/${claveSala}/`);
   },
   crearSala(datosSala) {
@@ -121,7 +144,7 @@ export default {
   obtenerMaestros() {
     return apiClient.get('/maestros/');
   },
-  obtenerMaestro(matriculaM) { 
+  obtenerMaestro(matriculaM) {
     return apiClient.get(`/maestros/${matriculaM}/`);
   },
   crearMaestro(datosMaestro) {
@@ -134,7 +157,7 @@ export default {
     return apiClient.delete(`/maestros/${matriculaM}/`);
   },
 
- 
+
   obtenerReservas(filtros = {}) {
     const params = new URLSearchParams(filtros).toString();
     return apiClient.get(`/reservas/?${params}`);
