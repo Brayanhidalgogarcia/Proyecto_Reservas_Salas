@@ -3,6 +3,24 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
 
+const salasFiltradas = computed(() => {
+    if (!nuevaReserva.value.edificio) return [];
+    
+    return salas.value.filter(s => s.edificio === nuevaReserva.value.edificio);
+});
+
+const esClase = computed(() => {
+    if (!nuevaReserva.value.actividad) return false;
+    const act = actividades.value.find(a => a.id === nuevaReserva.value.actividad);
+    return act && act.nombre_actividad === 'Asignatura';
+});
+
+function limpiarAsignaturaSiEsEvento() {
+    if (!esClase.value) {
+        nuevaReserva.value.asignatura = null;
+    }
+}
+
 const servicioCerrado = ref(false); 
 
 const checkEstadoServicio = () => {
@@ -24,13 +42,16 @@ const isSuperUser = ref(false);
 const nombreUsuarioLogueado = ref('Cargando usuario...'); 
 
 const nuevaReserva = ref({
+  actividad: null,      
+  edificio: null,        
   maestro: null,
   asignatura: null,
   sala: null,
   tema: '', 
+  requerimientos: '',    
   fecha: new Date().toISOString().split('T')[0],
   inicio: '',
-  fin: ''     
+  fin: ''    
 });
 
 const maestros = ref([]);
@@ -42,6 +63,8 @@ const cargando = ref(false);
 const enviando = ref(false);
 const error = ref(null);
 const mensajeExito = ref(null);
+const edificios = ref([]);
+const actividades = ref([]);
 
 let socket = null;
 
@@ -84,26 +107,30 @@ async function cargarDatos() {
     await cargarIdentidad();
 
     try {
-        const [resMaestros, resAsignaturas, resSalas, resReservas] = await Promise.all([
+        // 1. Expandimos el Promise.all para traer los nuevos catálogos en paralelo
+        const [resMaestros, resAsignaturas, resSalas, resReservas, resEdificios, resActividades] = await Promise.all([
             ApiService.obtenerMaestros(),
             ApiService.obtenerAsignaturas(),
             ApiService.obtenerSalas(),
-            ApiService.obtenerReservas()
+            ApiService.obtenerReservas(),
+            ApiService.obtenerEdificios(),   // NUEVO
+            ApiService.obtenerActividades()  // NUEVO
         ]);
 
         maestros.value = resMaestros.data || resMaestros;
         asignaturas.value = resAsignaturas.data || resAsignaturas;
         salas.value = resSalas.data || resSalas;
+        
+        // Asignamos los nuevos catálogos a las variables reactivas
+        edificios.value = resEdificios.data || resEdificios;
+        actividades.value = resActividades.data || resActividades;
+        
         const dataReservas = resReservas.data || resReservas;
         
-  
+        // 2. Lógica de Identidad (Intacta, está perfecta)
         if (!isSuperUser.value && currentUserId.value) {
-            
-           
             const maestroEncontrado = maestros.value.find(m => {
-                
                 let uId = m.usuario_id || m.usuario;
-               
                 if (typeof uId === 'object' && uId !== null) {
                     uId = uId.id;
                 }
@@ -117,13 +144,12 @@ async function cargarDatos() {
             } else {
                 nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro";
                 console.warn(`No se encontró un maestro vinculado al usuario ID: ${currentUserId.value}`);
-                
             }
         } else if (isSuperUser.value) {
             nombreUsuarioLogueado.value = "Administrador";
         }
         
-        
+        // 3. Mapeo de Reservas Existentes (Enriquecido)
         reservasExistentes.value = dataReservas.map(r => {
             let sId = null;
             let sNombre = 'Sala';
@@ -141,6 +167,10 @@ async function cargarDatos() {
                 id: r.id,
                 salaId: sId,
                 salaNombre: sNombre,
+                // Agregamos los nuevos campos que el Serializador de Django ya envía
+                edificio: r.edificio || 'Sin Edificio',
+                actividad: r.actividad || 'Sin Actividad',
+                requerimientos: r.requerimientos || null,
                 maestro: r.maestro_nombre || r.maestro,
                 inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
                 finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
@@ -156,7 +186,6 @@ async function cargarDatos() {
         cargando.value = false;
     }
 }
-
 
 const minFecha = computed(() => new Date().toISOString().split('T')[0]);
 
@@ -221,6 +250,9 @@ const estadoSalas = computed(() => {
         const id = sala.id || sala.clave_sala;
         const nombre = sala.nombre_sala || sala.nombre;
 
+        // NUEVA LÓGICA: Capturamos el texto del edificio que nos manda Django
+        const nombreEdificio = sala.edificio || 'Edificio no asignado';
+
         const ocupaciones = reservasExistentes.value.filter(r => {
             const matchId = r.salaId && r.salaId == id;
             const matchNombre = r.salaNombre === nombre;
@@ -240,6 +272,7 @@ const estadoSalas = computed(() => {
         return {
             id: id,
             nombre: nombre,
+            edificioNombre: nombreEdificio, // <-- LA PIEZA FALTANTE PARA EL HTML
             ocupado: ocupaciones.length > 0,
             reservas: ocupaciones,
             agotada: horasOcupadas >= (HORARIO_CIERRE - HORARIO_APERTURA),
@@ -250,7 +283,6 @@ const estadoSalas = computed(() => {
 });
 
 
-
 async function crearReserva() {
     error.value = null;
     mensajeExito.value = null;
@@ -259,41 +291,51 @@ async function crearReserva() {
     const f = nuevaReserva.value;
     const esInvalido = (v) => v === null || v === undefined || v === '';
 
+    // Validaciones base
     if (esInvalido(f.fecha)) { 
-        error.value = "La FECHA es obligatoria."; 
-        window.scrollTo(0,0); return; 
+        error.value = "La FECHA es obligatoria."; window.scrollTo(0,0); return; 
     }
-    
-    
+    if (esInvalido(f.actividad)) { 
+        error.value = "Debes seleccionar una ACTIVIDAD."; window.scrollTo(0,0); return; 
+    }
     if (isSuperUser.value && esInvalido(f.maestro)) { 
-        error.value = "Debes seleccionar un MAESTRO."; 
-        window.scrollTo(0,0); return; 
+        error.value = "Debes seleccionar un MAESTRO."; window.scrollTo(0,0); return; 
     }
-    
     if (esInvalido(f.sala)) { 
-        error.value = "Debes seleccionar una SALA."; 
+        // Aunque el usuario seleccione Edificio, la Sala es la que manda
+        error.value = "Debes seleccionar una SALA."; window.scrollTo(0,0); return; 
+    }
+
+    // --- NUEVA LÓGICA: Validación Condicional de Asignatura ---
+    // (Asume que tienes un arreglo 'actividades' que cargaste desde la API)
+    const actividadSeleccionada = actividades.value.find(a => a.id === f.actividad);
+    const esClase = actividadSeleccionada && actividadSeleccionada.nombre_actividad === 'Asignatura';
+
+    if (esClase && esInvalido(f.asignatura)) { 
+        error.value = "Para esta actividad, debes seleccionar una ASIGNATURA."; 
         window.scrollTo(0,0); return; 
     }
-    if (esInvalido(f.asignatura)) { 
-        error.value = "Debes seleccionar una ASIGNATURA."; 
-        window.scrollTo(0,0); return; 
-    }
+
     if (esInvalido(f.inicio)) { 
-        error.value = "La hora de INICIO es obligatoria."; 
-        window.scrollTo(0,0); return; 
+        error.value = "La hora de INICIO es obligatoria."; window.scrollTo(0,0); return; 
     }
     if (esInvalido(f.fin)) { 
-        error.value = "La hora de FIN es obligatoria."; 
-        window.scrollTo(0,0); return; 
+        error.value = "La hora de FIN es obligatoria."; window.scrollTo(0,0); return; 
     }
     
     enviando.value = true;
     try {
         const temaLimpio = f.tema && f.tema.trim() !== '' ? f.tema : null;
+        const reqLimpios = f.requerimientos && f.requerimientos.trim() !== '' ? f.requerimientos : null;
 
+        // Construcción del Payload: Excluimos 'edificio' y mandamos lo necesario
         const payload = {
-            ...f,
+            actividad: f.actividad,
+            maestro: f.maestro,
+            asignatura: esClase ? f.asignatura : null, // Si es evento, forzamos a null
+            sala: f.sala,
             tema: temaLimpio,
+            requerimientos: reqLimpios,
             inicio: `${f.fecha}T${f.inicio}:00`,
             fin: `${f.fecha}T${f.fin}:00`
         };
@@ -303,13 +345,17 @@ async function crearReserva() {
         mensajeExito.value = "¡Reserva creada con éxito!";
         window.scrollTo(0,0);
         
-       
+        // Limpieza profunda del formulario
         nuevaReserva.value.inicio = ''; 
         nuevaReserva.value.fin = '';
         nuevaReserva.value.tema = ''; 
+        nuevaReserva.value.requerimientos = ''; 
+        nuevaReserva.value.sala = null;
+        // Opcional: Podrías limpiar el edificio y la asignatura también si quieres un formulario en blanco
         
         await cargarDatos();
     } catch(e) {
+       
         console.error("Error completo en crearReserva:", e);
         window.scrollTo(0,0); 
         
@@ -317,12 +363,9 @@ async function crearReserva() {
             const data = e.response.data;
             if (data.detail) {
                 error.value = data.detail;
-            }
-            else if (data.non_field_errors) {
+            } else if (data.non_field_errors) {
                 error.value = data.non_field_errors[0];
-            }
-            else {
-               
+            } else {
                 const primerCampo = Object.keys(data)[0];
                 const mensaje = Array.isArray(data[primerCampo]) ? data[primerCampo][0] : data[primerCampo];
                 error.value = `${primerCampo.toUpperCase()}: ${mensaje}`;
@@ -358,8 +401,8 @@ onMounted(() => {
     socket.onmessage = () => { cargarDatos(); };
 });
 onUnmounted(() => { if(socket) socket.close(); });
-</script>
 
+</script>
 <template>
   <div class="container-fluid p-4">
 
@@ -393,11 +436,9 @@ onUnmounted(() => { if(socket) socket.close(); });
         <div class="row">
             <div class="col-lg-4 mb-4">
                 <div class="card shadow-sm border-0 h-100">
-                    
-                    
-                    
                     <div class="card-body">
                         <form @submit.prevent="crearReserva">
+                            
                             <div class="mb-3">
                                 <label class="form-label small fw-bold text-muted">FECHA</label>
                                 <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" required>
@@ -405,14 +446,12 @@ onUnmounted(() => { if(socket) socket.close(); });
                             
                             <div class="mb-3">
                                 <label class="form-label small fw-bold text-muted">MAESTRO</label>
-                                
                                 <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
                                     <option :value="null">Seleccionar...</option>
-                                    <option v-for="m in maestros" :value="m.id || m.matricula_m">
+                                    <option v-for="m in maestros" :key="m.id" :value="m.id || m.matricula_m">
                                         {{ m.nombre }} {{ m.apellido_p }}
                                     </option>
                                 </select>
-
                                 <div v-else class="input-group">
                                     <span class="input-group-text bg-light text-primary"><i class="bi bi-person-fill"></i></span>
                                     <input type="text" class="form-control bg-light" :value="nombreUsuarioLogueado" disabled readonly>
@@ -420,37 +459,58 @@ onUnmounted(() => { if(socket) socket.close(); });
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">SALA</label>
-                                <select class="form-select" v-model="nuevaReserva.sala">
+                                <label class="form-label small fw-bold text-muted">ACTIVIDAD</label>
+                                <select class="form-select" v-model="nuevaReserva.actividad" @change="limpiarAsignaturaSiEsEvento">
                                     <option :value="null">Seleccionar...</option>
-                                    <option v-for="s in salas" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
+                                    <option v-for="act in actividades" :key="act.id" :value="act.id">{{ act.nombre_actividad }}</option>
                                 </select>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label small fw-bold text-muted">ASIGNATURA</label>
-                                <select class="form-select" v-model="nuevaReserva.asignatura">
-                                    <option :value="null">Seleccionar...</option>
-                                    <option v-for="a in asignaturas" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
+                                <select class="form-select" v-model="nuevaReserva.asignatura" :disabled="!esClase" :class="{'bg-light text-muted': !esClase}">
+                                    <option :value="null">{{ esClase ? 'Seleccionar...' : 'No aplica para esta actividad' }}</option>
+                                    <option v-for="a in asignaturas" :key="a.id" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
                                 </select>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">Nombre de la actividad <span class="fw-light">(OpC)</span></label>
+                                <label class="form-label small fw-bold text-muted">EDIFICIO</label>
+                                <select class="form-select" v-model="nuevaReserva.edificio" @change="nuevaReserva.sala = null">
+                                    <option :value="null">Seleccionar...</option>
+                                    <option v-for="ed in edificios" :key="ed.id" :value="ed.id">{{ ed.nombre_edificio }}</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">SALA</label>
+                                <select class="form-select" v-model="nuevaReserva.sala" :disabled="!nuevaReserva.edificio" :class="{'bg-light text-muted': !nuevaReserva.edificio}">
+                                    <option :value="null">{{ nuevaReserva.edificio ? 'Seleccionar...' : 'Primero elige un edificio' }}</option>
+                                    <option v-for="s in salasFiltradas" :key="s.id" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">Nombre de la actividad <span class="fw-light">(Opc)</span></label>
                                 <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-muted">REQUERIMIENTOS ESPECIALES <span class="fw-light">(Opc)</span></label>
+                                <textarea class="form-control" v-model="nuevaReserva.requerimientos" rows="2" placeholder="Ej. Proyector, micrófonos..."></textarea>
                             </div>
 
                             <div class="row g-2">
                                 <div class="col-6">
                                     <label class="form-label small fw-bold text-muted">INICIO</label>
                                     <select class="form-select" v-model="nuevaReserva.inicio">
-                                        <option v-for="h in opcionesInicio" :value="h">{{ h }}</option>
+                                        <option v-for="h in opcionesInicio" :key="h" :value="h">{{ h }}</option>
                                     </select>
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label small fw-bold text-muted">FIN</label>
                                     <select class="form-select" v-model="nuevaReserva.fin">
-                                        <option v-for="h in opcionesFin" :value="h">{{ h }}</option>
+                                        <option v-for="h in opcionesFin" :key="h" :value="h">{{ h }}</option>
                                     </select>
                                 </div>
                             </div>
@@ -470,8 +530,11 @@ onUnmounted(() => { if(socket) socket.close(); });
                         <div class="card h-100 shadow-sm border border-light" :class="{'bg-light': !sala.ocupado}">
                             <div class="card-body d-flex flex-column">
                                 
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                        <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
+                                        <small class="text-muted"><i class="bi bi-geo-alt-fill"></i> {{ sala.edificioNombre || 'Edificio no asignado' }}</small>
+                                    </div>
                                     <span class="badge border" 
                                           :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
                                         {{ sala.agotada ? 'LLENA' : (sala.ocupado ? 'OCUPADA' : 'LIBRE') }}
@@ -484,14 +547,24 @@ onUnmounted(() => { if(socket) socket.close(); });
                                         Disponible todo el día
                                     </div>
                                     <ul v-else class="list-group list-group-flush small">
-                                        <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-1 d-flex justify-content-between align-items-center border-bottom border-light">
-                                            <div class="d-flex align-items-center">
-                                                <i class="bi bi-clock me-2 text-muted"></i>
-                                                <span class="fw-semibold text-dark">{{ res.inicioFmt }} - {{ res.finFmt }}</span>
+                                        <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-2 d-flex flex-column border-bottom border-light">
+                                            
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <div class="fw-semibold text-dark">
+                                                    <i class="bi bi-clock me-1 text-muted"></i> {{ res.inicioFmt }} - {{ res.finFmt }}
+                                                </div>
                                             </div>
-                                            <span class="text-secondary text-truncate ms-2" style="max-width: 120px; font-size: 0.85em;">
-                                                {{ res.maestro }}
-                                            </span>
+                                            
+                                            <div class="text-secondary" style="font-size: 0.9em;">
+                                                <div class="fw-bold text-dark">{{ res.maestro }}</div>
+                                                <div><span class="badge bg-secondary text-white me-1">{{ res.actividad }}</span> {{ res.tema || 'Sin tema' }}</div>
+                                            </div>
+
+                                            <div v-if="isSuperUser && res.requerimientos" class="mt-2 p-2 bg-warning-subtle border border-warning rounded" style="font-size: 0.85em;">
+                                                <span class="fw-bold text-dark-emphasis"><i class="bi bi-tools me-1"></i>Requerimientos:</span> 
+                                                <span class="text-dark">{{ res.requerimientos }}</span>
+                                            </div>
+
                                         </li>
                                     </ul>
                                 </div>
@@ -510,7 +583,8 @@ onUnmounted(() => { if(socket) socket.close(); });
                                         @click="seleccionar(sala.id)"
                                         class="btn btn-sm btn-outline-primary"
                                         :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
-                                        :disabled="sala.agotada"
+                                        :disabled="sala.agotada || !nuevaReserva.edificio"
+                                        :title="!nuevaReserva.edificio ? 'Selecciona un edificio primero' : ''"
                                     >
                                         Usar Sala
                                     </button>
@@ -525,7 +599,6 @@ onUnmounted(() => { if(socket) socket.close(); });
     </div>
   </div>
 </template>
-
 <style scoped>
 
 .form-control:focus, .form-select:focus { 
