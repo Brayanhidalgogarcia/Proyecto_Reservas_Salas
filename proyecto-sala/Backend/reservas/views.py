@@ -3,11 +3,11 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, BasePermission, SAFE_METHODS
 
-from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte,Actividad
+from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte,Actividad,Edificio
 from .serializers import (
     DivisionSerializer, AsignaturaSerializer, SalaSerializer, 
     MaestroSerializer, ReservaSerializer, UsuarioSerializer, 
-    ReporteSerializer, RegistroMaestroSerializer, ActividadSerializer
+    ReporteSerializer, RegistroMaestroSerializer, ActividadSerializer, EdificioSerializer
 )
 
 class IsAdminOrReadOnly(BasePermission):
@@ -15,6 +15,29 @@ class IsAdminOrReadOnly(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return request.user and request.user.is_superuser
+    
+class EdificioViewSet(viewsets.ModelViewSet):
+    serializer_class = EdificioSerializer 
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        if user.is_superuser:
+            return Edificio.objects.all()
+            
+        # Extraemos la división del usuario
+        division_usuario = None
+        if hasattr(user, 'division') and user.division:
+            division_usuario = user.division
+        elif hasattr(user, 'perfil_maestro') and user.perfil_maestro:
+            division_usuario = user.perfil_maestro.division
+
+        if division_usuario:
+            return Edificio.objects.filter(division=division_usuario)
+            
+        return Edificio.objects.none()
+
 
 class DivisionViewSet(viewsets.ModelViewSet):
     queryset = Division.objects.all()
@@ -27,9 +50,28 @@ class AsignaturaViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
 class SalaViewSet(viewsets.ModelViewSet):
-    queryset = Sala.objects.all()
     serializer_class = SalaSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        # El superusuario ve todas las salas con su ruta completa
+        if user.is_superuser:
+            return Sala.objects.select_related('edificio__division').all()
+
+        # Detección de la división del usuario activo
+        division_usuario = None
+        if hasattr(user, 'division') and user.division:
+            division_usuario = user.division
+        elif hasattr(user, 'perfil_maestro') and user.perfil_maestro:
+            division_usuario = user.perfil_maestro.division
+
+        # El candado: Solo salas cuyo edificio pertenezca a la división del usuario
+        if division_usuario:
+            return Sala.objects.filter(edificio__division=division_usuario).select_related('edificio__division')
+            
+        return Sala.objects.none()
     
 class ActividadViewSet(viewsets.ModelViewSet):
     serializer_class = ActividadSerializer
@@ -53,9 +95,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         if user.is_superuser:
             return Usuario.objects.all()
         return Usuario.objects.filter(id=user.id)
-
 class ReservaViewSet(viewsets.ModelViewSet):
-    queryset = Reserva.objects.all()
     serializer_class = ReservaSerializer
     permission_classes = [IsAuthenticated] 
 
@@ -105,11 +145,28 @@ class ReservaViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
+        user = self.request.user
         
+        # 1. Optimización profunda: Ahora viaja hasta la división
         queryset = Reserva.objects.select_related(
-            'sala', 'maestro', 'asignatura', 'actividad'
+            'sala__edificio__division', 'maestro', 'asignatura', 'actividad'
         ).all().order_by('-inicio') 
         
+        # 2. EL ESCUDO DE AISLAMIENTO
+        if not user.is_superuser:
+            division_usuario = None
+            if hasattr(user, 'division') and user.division:
+                division_usuario = user.division
+            elif hasattr(user, 'perfil_maestro') and user.perfil_maestro:
+                division_usuario = user.perfil_maestro.division
+
+            if division_usuario:
+                queryset = queryset.filter(sala__edificio__division=division_usuario)
+            else:
+                # Si es un usuario sin perfil asignado, no ve ninguna reserva por seguridad
+                return Reserva.objects.none()
+
+        # 3. Filtros dinámicos solicitados por Vue.js
         fecha_inicio = self.request.query_params.get('fecha_inicio')
         fecha_fin = self.request.query_params.get('fecha_fin')
         sala_id = self.request.query_params.get('sala')
@@ -127,12 +184,10 @@ class ReservaViewSet(viewsets.ModelViewSet):
         if sala_id:
             queryset = queryset.filter(sala__clave_sala=sala_id)
 
-        
         if actividad_id:
             queryset = queryset.filter(actividad_id=actividad_id)
 
         return queryset
-
 
 class ReporteViewSet(viewsets.ModelViewSet):
     serializer_class = ReporteSerializer

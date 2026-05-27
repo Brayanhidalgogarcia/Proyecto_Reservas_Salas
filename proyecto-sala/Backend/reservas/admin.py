@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Usuario, Division, Asignatura, Sala, Maestro, Reserva, Reporte, Actividad
+from .models import Usuario, Division, Asignatura, Sala, Maestro, Reserva, Reporte, Actividad, Edificio
 from .forms import UsuarioCreationForm, UsuarioChangeForm
 
 admin.site.site_header = "Administración de Salas UJAT"
@@ -83,10 +83,12 @@ class MaestroAdmin(admin.ModelAdmin):
     
     def usuario_asociado(self, obj):
         return obj.usuario.username if obj.usuario else "Sin Usuario"
+    
 
 
 admin.site.register(Division)
 admin.site.register(Asignatura)
+admin.site.register(Edificio)
 admin.site.register(Sala)
 admin.site.register(Reserva)
 admin.site.register(Reporte)

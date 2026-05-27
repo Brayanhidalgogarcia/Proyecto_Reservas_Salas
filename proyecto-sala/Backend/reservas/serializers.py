@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (Division, Asignatura, Sala, Maestro, 
                      Reserva, 
-                     Usuario,Reporte,Actividad)
+                     Usuario,Reporte,Actividad,Edificio)
 from django.utils import timezone
 
 
@@ -33,6 +33,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             data['division'] = None
 
         return data
+    
 class UsuarioSerializer(serializers.ModelSerializer):
     division_nombre = serializers.ReadOnlyField(source='division.nombre_division')
 
@@ -40,7 +41,19 @@ class UsuarioSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = ['id', 'username', 'email', 'nombres', 'apellido_paterno', 'apellido_materno', 'matricula_ud', 'telefono', 'division', 'division_nombre']
 
+class EdificioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Edificio
+        fields = '__all__'
 
+    def to_representation(self, instance):
+        response = super().to_representation(instance)
+        
+        # 1. Conservamos la llave original 'division' con su ID numérico intacto.
+        # 2. Creamos una NUEVA llave para mandar el texto visual al frontend.
+        response['division_nombre'] = str(instance.division) if instance.division else None
+        
+        return response
 class DivisionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Division
@@ -65,7 +78,13 @@ class SalaSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        response['division'] = str(instance.division) 
+        # Redireccionamos el puente de lectura profunda: Sala -> Edificio -> División
+        if instance.edificio:
+            response['edificio'] = str(instance.edificio.nombre_edificio)
+            response['division'] = str(instance.edificio.division)
+        else:
+            response['edificio'] = None
+            response['division'] = "Sin División"
         return response
     
 class ActividadSerializer(serializers.ModelSerializer):
@@ -87,23 +106,25 @@ class MaestroSerializer(serializers.ModelSerializer):
         response['division'] = str(instance.division) 
         return response
 
-
 class ReservaSerializer(serializers.ModelSerializer):
-    division = serializers.StringRelatedField(source='sala.division', read_only=True)
+    # Redireccionamos el puente de lectura profunda: Sala -> Edificio -> División
+    division = serializers.StringRelatedField(source='sala.edificio.division', read_only=True)
+    # Creamos el nuevo puente para enviar el nombre del edificio al frontend
+    edificio = serializers.StringRelatedField(source='sala.edificio.nombre_edificio', read_only=True)
     creado_por_id = serializers.ReadOnlyField(source='creado_por.id')
 
     class Meta:
         model = Reserva
         
+        # Añadimos 'edificio' a la lista de campos expuestos
         fields = [
             'id', 'actividad', 'maestro', 'asignatura', 'sala', 
-            'division', 'tema', 'requerimientos', 'inicio', 'fin', 
+            'edificio', 'division', 'tema', 'requerimientos', 'inicio', 'fin', 
             'fecha_apartado', 'creado_por_id'
         ]
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
-        
         
         response['actividad'] = str(instance.actividad) if instance.actividad else None
         response['maestro'] = str(instance.maestro) if instance.maestro else None
@@ -113,23 +134,18 @@ class ReservaSerializer(serializers.ModelSerializer):
         return response
 
     def validate(self, data):
-       
         actividad = data.get('actividad')
         asignatura = data.get('asignatura')
 
         if actividad:
-           
             if actividad.nombre_actividad == 'Asignatura':
                 if not asignatura:
-                    
                     raise serializers.ValidationError({
                         "asignatura": "Es obligatorio seleccionar una asignatura para este tipo de actividad."
                     })
             else:
-                
                 data['asignatura'] = None
 
-     
         sala = data.get('sala')
         inicio = data.get('inicio')
         fin = data.get('fin')
@@ -156,7 +172,6 @@ class ReservaSerializer(serializers.ModelSerializer):
                 "detail": "El horario de servicio es exclusivamente de 08:00 a 16:00."
             })
 
-       
         qs = Reserva.objects.filter(
             sala=sala,
             inicio__lt=fin,
@@ -178,7 +193,7 @@ class ReservaSerializer(serializers.ModelSerializer):
             })
 
         return data
-
+    
 class ReporteSerializer(serializers.ModelSerializer):
     
     tipo_legible = serializers.CharField(source='get_tipo_display', read_only=True)

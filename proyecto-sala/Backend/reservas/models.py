@@ -14,6 +14,8 @@ class Actividad(models.Model):
 
     class Meta:
         db_table = 'actividad'
+        verbose_name = 'Actividad' 
+        verbose_name_plural = 'Actividades'
 
     def __str__(self):
         return self.nombre_actividad
@@ -25,6 +27,8 @@ class Division(models.Model):
 
     class Meta:
         db_table = 'division'
+        verbose_name = 'División'
+        verbose_name_plural = 'Divisiones'
 
     def __str__(self):
         return self.nombre_division or self.clave_division
@@ -39,19 +43,44 @@ class Asignatura(models.Model):
 
     def __str__(self):
         return self.nombre_asignatura or self.clave_asignatura
+    
+class Edificio(models.Model):
+    nombre_edificio = models.CharField(max_length=50, db_column='NombreEdificio')
+    # Si se borra una división, se borran sus edificios en cascada
+    division = models.ForeignKey(Division, on_delete=models.CASCADE, db_column='ClaveDivision')
+
+    class Meta:
+        db_table = 'edificio'
+        verbose_name = 'Edificio'
+        verbose_name_plural = 'Edificios'
+        # Regla de integridad: Evita que existan dos "Edificio A" en la misma división
+        constraints = [
+            models.UniqueConstraint(
+                fields=['nombre_edificio', 'division'], 
+                name='unique_edificio_por_division'
+            )
+        ]
+
+    def __str__(self):
+        return f"Edificio {self.nombre_edificio} - {self.division}"
 
 class Sala(models.Model):
     clave_sala = models.CharField(max_length=20, primary_key=True, db_column='ClaveSala')
     nombre_sala = models.CharField(max_length=80, null=True, blank=True, db_column='NombreSala')
-    division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True, db_column='ClaveDivision')
+    
+    
+    edificio = models.ForeignKey(Edificio, on_delete=models.SET_NULL, null=True, blank=True, db_column='IdEdificio')
+    
     capacidad = models.IntegerField(null=True, blank=True, db_column='Capacidad')
 
     class Meta:
         db_table = 'sala'
+        verbose_name = 'Sala'
+        verbose_name_plural = 'Salas'
 
     def __str__(self):
         return self.nombre_sala or self.clave_sala
-
+    
 class Maestro(models.Model):
     matricula_m = models.CharField(max_length=20, primary_key=True, db_column='MatriculaM')
     nombre = models.CharField(max_length=40, null=True, blank=True, db_column='Nombre')
