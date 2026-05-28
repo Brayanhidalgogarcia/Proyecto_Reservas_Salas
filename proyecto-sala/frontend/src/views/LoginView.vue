@@ -125,20 +125,18 @@ async function login() {
   height: 100vh;
   overflow: hidden;
 }
+
 .left-side {
-    flex: 0.5;
-   
-    background: url('@/assets/imagenes/sesion.jpg') no-repeat center center; 
-    background-size: cover;
-    filter: brightness(0.8);
- 
-    background-color: #f0f2f5; 
+  flex: 0.5;
+  background: url('@/assets/imagenes/sesion.jpg') no-repeat center center; 
+  background-size: cover;
+  filter: brightness(0.8);
+  background-color: #f0f2f5; 
 }
 
-
 @media (max-width: 768px) {
-    .left-side { display: none; }
-    .right-side { flex: 1; }
+  .left-side { display: none; }
+  .right-side { flex: 1; }
 }
 
 .right-side {
@@ -147,17 +145,20 @@ async function login() {
   flex-direction: column;
   background: #fff;
 }
+
 .topbar {
-  background-color: #005f86;
+  background-color: var(--color-primario);
   color: white;
   padding: 20px 20px;
   display: flex;
   align-items: center;
 }
+
 .topbar img {
   height: 60px; 
   margin-right: 20px;
 }
+
 .form-box {
   flex: 1;
   display: flex;
@@ -166,24 +167,14 @@ async function login() {
   overflow-y: auto;
   padding: 20px;
 }
+
 .form-box-inner {
   width: 100%;
   max-width: 420px;
 }
+
 .form-box-inner h4 {
   margin-bottom: 1.5rem;
   color: #333;
-}
-
-
-:global(body) {
-  margin: 0;
-  padding: 0;
-  height: 100vh;
-  font-family: Arial, sans-serif;
-}
-:global(#app) {
-  width: 100%;
-  height: 100%;
 }
 </style>

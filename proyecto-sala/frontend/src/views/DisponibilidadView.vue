@@ -233,10 +233,3 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>
-
-.form-control:focus, .btn:focus {
-  box-shadow: none;
-  border-color: #005f86;
-}
-</style>

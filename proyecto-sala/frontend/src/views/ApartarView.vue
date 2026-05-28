@@ -599,22 +599,8 @@ onUnmounted(() => { if(socket) socket.close(); });
     </div>
   </div>
 </template>
-<style scoped>
 
-.form-control:focus, .form-select:focus { 
-    border-color: #86b7fe; 
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15); 
-}
-.card {
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s;
-}
-.card:hover {
-    border-color: #dee2e6;
-}
-.btn-sm {
-    font-size: 0.85rem;
-}
-.bg-success-subtle { background-color: #d1e7dd; }
-.bg-warning-subtle { background-color: #fff3cd; }
-.bg-danger-subtle { background-color: #f8d7da; }
+<style scoped>
+.btn-sm { font-size: 0.85rem; }
+
 </style>

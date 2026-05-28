@@ -153,7 +153,3 @@ const registrar = async () => {
 };
 </script>
 
-<style scoped>
-.card { border-color: #dee2e6; }
-.form-label { color: #495057; }
-</style>

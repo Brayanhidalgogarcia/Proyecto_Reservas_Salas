@@ -2,6 +2,7 @@
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
 import { ref, watch, onMounted } from 'vue'; 
 
+
 const router = useRouter();
 const route = useRoute();
 const esAdmin = ref(false);
@@ -110,12 +111,8 @@ const logout = () => {
   </div>
 </template>
 <style scoped>
-
-.w-100 { width: 100vw; }
-.h-100 { height: 100vh; }
-
 .topbar {
-  background-color: #005f86;
+  background-color: var(--color-primario);
   color: white;
   padding: 10px 20px;
   display: flex;

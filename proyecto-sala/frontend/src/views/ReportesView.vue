@@ -571,6 +571,7 @@ function formatDateTime(dateTimeString) {
 </template>
 
 <style scoped>
+
 .fade-in { animation: fadeIn 0.5s; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 </style>
