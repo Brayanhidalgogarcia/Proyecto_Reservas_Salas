@@ -94,7 +94,8 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             return Usuario.objects.all()
-        return Usuario.objects.filter(id=user.id)
+        return Usuario.objects.filter(id=user.id) 
+    
 class ReservaViewSet(viewsets.ModelViewSet):
     serializer_class = ReservaSerializer
     permission_classes = [IsAuthenticated] 
