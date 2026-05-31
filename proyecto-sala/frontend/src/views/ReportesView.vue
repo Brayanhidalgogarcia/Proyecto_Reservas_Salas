@@ -106,35 +106,23 @@ async function generarAnalisisEnVivo() {
   reservas.value = [];
 
   try {
-    const response = await ApiService.obtenerReservas();
-    const todosLosDatos = response.data || response;
+    const payloadFiltros = {
+        fecha_inicio: fechaInicio.value, 
+        fecha_fin: fechaFin.value        
+    };
+    
+    if (salaSeleccionada.value) {
+        payloadFiltros.sala = salaSeleccionada.value;
+    }
 
-    if (!Array.isArray(todosLosDatos)) throw new Error("Datos inválidos");
+    
+    const response = await ApiService.obtenerReservas(payloadFiltros);
+    const datosFiltrados = response.data || response;
 
-    const fInicio = fechaInicio.value; 
-    const fFin = fechaFin.value;
+    if (!Array.isArray(datosFiltrados)) throw new Error("Datos inválidos devueltos por el servidor.");
 
-    reservas.value = todosLosDatos.filter(r => {
-        let fechaReserva = '';
-        if (r.inicio) {
-            const dt = new Date(r.inicio);
-            const anio = dt.getFullYear();
-            const mes = String(dt.getMonth() + 1).padStart(2, '0');
-            const dia = String(dt.getDate()).padStart(2, '0');
-            fechaReserva = `${anio}-${mes}-${dia}`;
-        }
-        
-        const enRango = fechaReserva >= fInicio && fechaReserva <= fFin;
-        let coincideSala = true;
-        if (salaSeleccionada.value) {
-            const idSalaReserva = (typeof r.sala === 'object') ? r.sala.id : r.sala;
-            const claveSalaReserva = (typeof r.sala === 'object') ? r.sala.clave_sala : null;
-            
-            coincideSala = String(idSalaReserva) === String(salaSeleccionada.value) || 
-                           String(claveSalaReserva) === String(salaSeleccionada.value);
-        }
-        return enRango && coincideSala;
-    });
+   
+    reservas.value = datosFiltrados;
     
     calcularEstadisticas();
     prepararGraficos();
