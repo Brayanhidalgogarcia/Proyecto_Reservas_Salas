@@ -3,12 +3,19 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router'; 
 import SalaCard from '@/components/SalaCard.vue';
 import ApiService from '@/services/ApiService.js';
+import { useWebSocket } from '@/composables/useWebSocket.js';
 
 const router = useRouter(); 
+const { conectar } = useWebSocket(cargarDatos);
+onMounted(() => {
+  checkEstadoServicio(); 
+  cargarDatos(); 
+  conectar();
+});
 
 const HORA_APERTURA = 8; 
 const HORA_CIERRE = 16;  
-
+  
 const reservaciones = ref([]);
 const salas = ref([]); 
 const fechaSeleccionada = ref(new Date().toISOString().slice(0, 10)); 
@@ -19,7 +26,6 @@ const servicioCerrado = ref(false);
 
 const isSuperUser = ref(false); 
 
-let socket = null;
 
 const checkEstadoServicio = () => {
   const ahora = new Date();
@@ -111,33 +117,6 @@ const cargarDatos = async () => {
   }
 };
 
-const conectarWebSocket = () => {
-  console.log("Intentando conectar al WebSocket...");
-  
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-
-  const host = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-               ? '127.0.0.1:8000' 
-               : window.location.host; 
-
-  const wsUrl = `${wsProtocol}${host}/ws/reservas/`;
-  
-  socket = new WebSocket(wsUrl);
-  socket.onopen = () => console.log("🟢 WebSocket Conectado!");
-  
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log("📩 Actualización recibida:", data.message);
-    cargarDatos(); 
-  };
-
-  socket.onclose = () => setTimeout(conectarWebSocket, 3000);
-  
-  socket.onerror = (err) => {
-    console.error("Error en WebSocket:", err);
-    socket.close();
-  };
-};
 
 const cambiarDia = (dias) => {
   const [anio, mes, dia] = fechaSeleccionada.value.split('-').map(Number);
@@ -179,15 +158,9 @@ const reservacionesPorSala = computed(() => {
   return listaCompleta;
 });
 
-onMounted(() => {
-  checkEstadoServicio(); 
-  cargarDatos(); 
-  conectarWebSocket();
-});
 
-onUnmounted(() => {
-  if (socket) socket.close();
-});
+
+
 </script>
 
 <template>

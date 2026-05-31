@@ -1,6 +1,15 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
+import { useWebSocket } from '@/composables/useWebSocket.js';
+
+const { conectar } = useWebSocket(cargarDatos);
+onMounted(() => {
+    checkEstadoServicio();
+    cargarDatos();
+    conectar(); 
+});
+
 
 
 const salasFiltradas = computed(() => {
@@ -66,7 +75,6 @@ const mensajeExito = ref(null);
 const edificios = ref([]);
 const actividades = ref([]);
 
-let socket = null;
 
 
 function obtenerIdDesdeToken() {
@@ -394,13 +402,8 @@ async function cancelar(id, horarioDesc) {
 
 function seleccionar(id) { nuevaReserva.value.sala = id; }
 
-onMounted(() => {
-    checkEstadoServicio();
-    cargarDatos();
-    socket = new WebSocket('ws://127.0.0.1:8000/ws/reservas/');
-    socket.onmessage = () => { cargarDatos(); };
-});
-onUnmounted(() => { if(socket) socket.close(); });
+
+
 
 </script>
 <template>
