@@ -4,6 +4,7 @@ import DisponibilidadView from '@/views/DisponibilidadView.vue'
 import ApartarView from '../views/ApartarView.vue'
 import ReportesView from '../views/ReportesView.vue'
 import LoginView from '@/views/LoginView.vue'
+import CatalogosView from '@/views/CatalogosView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -42,6 +43,13 @@ const router = createRouter({
       component: AltaUsuarioView,
       meta: { title: 'Alta de Usuarios', requiresAuth: true, requiresAdmin: true }
     },
+    {
+      path: '/admin/catalogos',
+      name: 'catalogos',
+      component: CatalogosView,
+      meta: { title: 'Gestión de Catálogos', requiresAuth: true, requiresAdmin: true }
+    },
+
   ]
 })
 
