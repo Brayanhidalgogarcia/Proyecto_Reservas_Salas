@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 import { useWebSocket } from '@/composables/useWebSocket.js';
 
 const { conectar } = useWebSocket(cargarDatos);
+
 onMounted(() => {
     checkEstadoServicio();
     cargarDatos();
@@ -11,11 +12,9 @@ onMounted(() => {
 });
 
 
-
 const salasFiltradas = computed(() => {
     if (!nuevaReserva.value.edificio) return [];
-    
-    return salas.value.filter(s => s.edificio === nuevaReserva.value.edificio);
+    return salas.value.filter(s => String(s.edificio) === String(nuevaReserva.value.edificio));
 });
 
 const esClase = computed(() => {
@@ -75,8 +74,6 @@ const mensajeExito = ref(null);
 const edificios = ref([]);
 const actividades = ref([]);
 
-
-
 function obtenerIdDesdeToken() {
     const token = localStorage.getItem('access') || localStorage.getItem('token');
     if (!token) return null;
@@ -97,7 +94,6 @@ async function cargarIdentidad() {
     if (!uid) uid = obtenerIdDesdeToken();
 
     currentUserId.value = uid;
-    
     isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
 }
 
@@ -107,7 +103,6 @@ function tengoPermisoBorrar(reserva) {
     return String(currentUserId.value) === String(reserva.creadoPor);
 }
 
-
 async function cargarDatos() {
     cargando.value = true;
     error.value = null;
@@ -115,27 +110,29 @@ async function cargarDatos() {
     await cargarIdentidad();
 
     try {
-        // 1. Expandimos el Promise.all para traer los nuevos catálogos en paralelo
+        
+        const filtros = {
+            fecha_inicio: nuevaReserva.value.fecha,
+            fecha_fin: nuevaReserva.value.fecha
+        };
+
         const [resMaestros, resAsignaturas, resSalas, resReservas, resEdificios, resActividades] = await Promise.all([
             ApiService.obtenerMaestros(),
             ApiService.obtenerAsignaturas(),
             ApiService.obtenerSalas(),
-            ApiService.obtenerReservas(),
-            ApiService.obtenerEdificios(),   // NUEVO
-            ApiService.obtenerActividades()  // NUEVO
+            ApiService.obtenerReservas(filtros), 
+            ApiService.obtenerEdificios(),  
+            ApiService.obtenerActividades() 
         ]);
 
         maestros.value = resMaestros.data || resMaestros;
         asignaturas.value = resAsignaturas.data || resAsignaturas;
         salas.value = resSalas.data || resSalas;
-        
-        // Asignamos los nuevos catálogos a las variables reactivas
         edificios.value = resEdificios.data || resEdificios;
         actividades.value = resActividades.data || resActividades;
         
         const dataReservas = resReservas.data || resReservas;
         
-        // 2. Lógica de Identidad (Intacta, está perfecta)
         if (!isSuperUser.value && currentUserId.value) {
             const maestroEncontrado = maestros.value.find(m => {
                 let uId = m.usuario_id || m.usuario;
@@ -157,7 +154,6 @@ async function cargarDatos() {
             nombreUsuarioLogueado.value = "Administrador";
         }
         
-        // 3. Mapeo de Reservas Existentes (Enriquecido)
         reservasExistentes.value = dataReservas.map(r => {
             let sId = null;
             let sNombre = 'Sala';
@@ -175,7 +171,6 @@ async function cargarDatos() {
                 id: r.id,
                 salaId: sId,
                 salaNombre: sNombre,
-                // Agregamos los nuevos campos que el Serializador de Django ya envía
                 edificio: r.edificio || 'Sin Edificio',
                 actividad: r.actividad || 'Sin Actividad',
                 requerimientos: r.requerimientos || null,
@@ -200,11 +195,11 @@ const minFecha = computed(() => new Date().toISOString().split('T')[0]);
 const obtenerOcupacionesSala = () => {
     if (!nuevaReserva.value.sala || !nuevaReserva.value.fecha) return [];
     
-    const salaObj = salas.value.find(s => (s.id || s.clave_sala) == nuevaReserva.value.sala);
+    const salaObj = salas.value.find(s => String(s.id || s.clave_sala) === String(nuevaReserva.value.sala));
     const nombreObj = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
 
     return reservasExistentes.value.filter(r => {
-        const mismaSala = (r.salaId == nuevaReserva.value.sala) || (r.salaNombre === nombreObj);
+        const mismaSala = (String(r.salaId) === String(nuevaReserva.value.sala)) || (r.salaNombre === nombreObj);
         return mismaSala && r.fecha === nuevaReserva.value.fecha;
     });
 };
@@ -250,19 +245,20 @@ const opcionesFin = computed(() => {
     return horas;
 });
 
+
 const estadoSalas = computed(() => {
     const dia = nuevaReserva.value.fecha;
-    if (!dia) return [];
+    if (!dia || !nuevaReserva.value.edificio) return [];
 
-    return salas.value.map(sala => {
+    const salasAMostrar = salas.value.filter(s => String(s.edificio) === String(nuevaReserva.value.edificio));
+
+    return salasAMostrar.map(sala => {
         const id = sala.id || sala.clave_sala;
         const nombre = sala.nombre_sala || sala.nombre;
-
-        // NUEVA LÓGICA: Capturamos el texto del edificio que nos manda Django
         const nombreEdificio = sala.edificio || 'Edificio no asignado';
 
         const ocupaciones = reservasExistentes.value.filter(r => {
-            const matchId = r.salaId && r.salaId == id;
+            const matchId = r.salaId && String(r.salaId) === String(id);
             const matchNombre = r.salaNombre === nombre;
             return (matchId || matchNombre) && r.fecha === dia;
         });
@@ -280,7 +276,7 @@ const estadoSalas = computed(() => {
         return {
             id: id,
             nombre: nombre,
-            edificioNombre: nombreEdificio, // <-- LA PIEZA FALTANTE PARA EL HTML
+            edificioNombre: nombreEdificio, 
             ocupado: ocupaciones.length > 0,
             reservas: ocupaciones,
             agotada: horasOcupadas >= (HORARIO_CIERRE - HORARIO_APERTURA),
@@ -299,7 +295,6 @@ async function crearReserva() {
     const f = nuevaReserva.value;
     const esInvalido = (v) => v === null || v === undefined || v === '';
 
-    // Validaciones base
     if (esInvalido(f.fecha)) { 
         error.value = "La FECHA es obligatoria."; window.scrollTo(0,0); return; 
     }
@@ -310,12 +305,9 @@ async function crearReserva() {
         error.value = "Debes seleccionar un MAESTRO."; window.scrollTo(0,0); return; 
     }
     if (esInvalido(f.sala)) { 
-        // Aunque el usuario seleccione Edificio, la Sala es la que manda
         error.value = "Debes seleccionar una SALA."; window.scrollTo(0,0); return; 
     }
 
-    // --- NUEVA LÓGICA: Validación Condicional de Asignatura ---
-    // (Asume que tienes un arreglo 'actividades' que cargaste desde la API)
     const actividadSeleccionada = actividades.value.find(a => a.id === f.actividad);
     const esClase = actividadSeleccionada && actividadSeleccionada.nombre_actividad === 'Asignatura';
 
@@ -336,11 +328,10 @@ async function crearReserva() {
         const temaLimpio = f.tema && f.tema.trim() !== '' ? f.tema : null;
         const reqLimpios = f.requerimientos && f.requerimientos.trim() !== '' ? f.requerimientos : null;
 
-        // Construcción del Payload: Excluimos 'edificio' y mandamos lo necesario
         const payload = {
             actividad: f.actividad,
             maestro: f.maestro,
-            asignatura: esClase ? f.asignatura : null, // Si es evento, forzamos a null
+            asignatura: esClase ? f.asignatura : null, 
             sala: f.sala,
             tema: temaLimpio,
             requerimientos: reqLimpios,
@@ -353,17 +344,14 @@ async function crearReserva() {
         mensajeExito.value = "¡Reserva creada con éxito!";
         window.scrollTo(0,0);
         
-        // Limpieza profunda del formulario
         nuevaReserva.value.inicio = ''; 
         nuevaReserva.value.fin = '';
         nuevaReserva.value.tema = ''; 
         nuevaReserva.value.requerimientos = ''; 
         nuevaReserva.value.sala = null;
-        // Opcional: Podrías limpiar el edificio y la asignatura también si quieres un formulario en blanco
         
         await cargarDatos();
     } catch(e) {
-       
         console.error("Error completo en crearReserva:", e);
         window.scrollTo(0,0); 
         
@@ -402,16 +390,14 @@ async function cancelar(id, horarioDesc) {
 
 function seleccionar(id) { nuevaReserva.value.sala = id; }
 
-
-
-
 </script>
+
 <template>
   <div class="container-fluid p-4">
 
     <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
         <h2 class="text-dark mb-0 me-3 fw-bold">
-           <i class="bi bi-calendar-check text-secondary"></i> Reservar
+           <i class="bi bi-calendar-check text-secondary"></i> Reservar Espacio
         </h2>
     </div>
     
@@ -444,7 +430,7 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
                             
                             <div class="mb-3">
                                 <label class="form-label small fw-bold text-muted">FECHA</label>
-                                <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" required>
+                                <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" @change="cargarDatos" required>
                             </div>
                             
                             <div class="mb-3">
@@ -528,7 +514,13 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
             </div>
 
             <div class="col-lg-8">
-                <div class="row g-3">
+                <div v-if="!nuevaReserva.edificio" class="d-flex flex-column align-items-center justify-content-center h-100 bg-white rounded shadow-sm border border-dashed border-secondary p-5 text-muted">
+                    <i class="bi bi-building fs-1 mb-3 opacity-50"></i>
+                    <h5 class="fw-bold text-dark">Selecciona un Edificio</h5>
+                    <p class="small text-center max-w-75">El mapa de ocupación de las salas aparecerá aquí una vez que elijas una ubicación en el formulario de la izquierda.</p>
+                </div>
+                
+                <div v-else class="row g-3">
                     <div v-for="sala in estadoSalas" :key="sala.id" class="col-md-6">
                         <div class="card h-100 shadow-sm border border-light" :class="{'bg-light': !sala.ocupado}">
                             <div class="card-body d-flex flex-column">
@@ -536,7 +528,6 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
                                 <div class="d-flex justify-content-between align-items-start mb-3">
                                     <div>
                                         <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
-                                        <small class="text-muted"><i class="bi bi-geo-alt-fill"></i> {{ sala.edificioNombre || 'Edificio no asignado' }}</small>
                                     </div>
                                     <span class="badge border" 
                                           :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
@@ -586,8 +577,7 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
                                         @click="seleccionar(sala.id)"
                                         class="btn btn-sm btn-outline-primary"
                                         :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
-                                        :disabled="sala.agotada || !nuevaReserva.edificio"
-                                        :title="!nuevaReserva.edificio ? 'Selecciona un edificio primero' : ''"
+                                        :disabled="sala.agotada"
                                     >
                                         Usar Sala
                                     </button>
@@ -605,5 +595,6 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
 
 <style scoped>
 .btn-sm { font-size: 0.85rem; }
-
+.border-dashed { border-style: dashed !important; }
+.max-w-75 { max-width: 75%; }
 </style>
