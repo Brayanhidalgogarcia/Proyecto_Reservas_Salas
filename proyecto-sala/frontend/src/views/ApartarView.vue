@@ -35,7 +35,7 @@ const checkEstadoServicio = () => {
   const ahora = new Date();
   const horaActual = ahora.getHours();
 
-  if (horaActual < 8 || horaActual >= 16) {
+  if (horaActual < 8 || horaActual >= 19) {
     servicioCerrado.value = true;
   } else {
     servicioCerrado.value = false;
