@@ -42,7 +42,7 @@ const checkEstadoServicio = () => {
   const ahora = new Date();
   const horaActual = ahora.getHours();
 
-  if (horaActual < 8 || horaActual >= 19) {
+  if (horaActual < 8 || horaActual >= 16) {
     servicioCerrado.value = true;
   } else {
     servicioCerrado.value = false;
