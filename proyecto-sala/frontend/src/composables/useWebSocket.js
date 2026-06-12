@@ -17,7 +17,7 @@ export function useWebSocket(onMessageCallback) {
         
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            console.log("📩 Actualización recibida:", data.message);
+            console.log(" Actualización recibida:", data.message);
             // Ejecuta la función que le mande el componente (ej. cargarDatos)
             if (onMessageCallback) onMessageCallback();
         };
@@ -38,7 +38,7 @@ export function useWebSocket(onMessageCallback) {
         if (socket) {
             socket.onclose = null; // Evita que intente reconectar al salir
             socket.close();
-            console.log("🔴 WebSocket cerrado limpiamente.");
+            console.log(" WebSocket cerrado limpiamente.");
         }
     });
 
