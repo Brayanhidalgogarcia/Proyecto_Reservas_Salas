@@ -52,7 +52,7 @@ const cargarIdentidad = () => {
   }
 };
 
-const cargarDatos = async () => {
+async function cargarDatos() {
   if (salas.value.length === 0) cargando.value = true;
   error.value = null; 
   
