@@ -164,9 +164,40 @@ const reservacionesPorSala = computed(() => {
 </script>
 
 <template>
-  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
-            <div class="col" v-for="grupo in reservacionesPorSala" :key="grupo.nombre">
-              <SalaCard :sala="grupo" :isSuperUser="isSuperUser" />
+
+  <div class="container-fluid p-4">
+
+  
+
+   <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
+        <h2 class="text-dark mb-0 me-3 fw-bold">
+           <i class="bi bi-calendar-check text-secondary"></i> Disponibilidad
+        </h2>
+    </div>
+    
+
+
+
+
+  <div>
+    <div v-if="servicioCerrado" class="text-center py-5 mt-4 bg-white rounded shadow-sm border border-warning">
+       <div class="py-5">
+            <i class="bi bi-clock-history text-warning display-1"></i>
+            <h2 class="mt-4 fw-bold text-dark">Servicio Cerrado</h2>
+            <p class="text-muted fs-5">
+                El sistema de reservas y consulta solo está disponible en horario laboral.
+            </p>
+            <div class="d-inline-block bg-light px-4 py-2 rounded-pill border mt-2">
+                <span class="fw-bold text-primary">Horario de Atención:</span> 08:00 AM - 04:00 PM
             </div>
-          </div>
-  </template>
+        </div>
+    </div>
+
+    <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+      <div class="col" v-for="grupo in reservacionesPorSala" :key="grupo.nombre">
+        <SalaCard :sala="grupo" :isSuperUser="isSuperUser" />
+      </div>
+    </div>
+  </div>
+  </div>
+</template>
