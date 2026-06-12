@@ -11,10 +11,17 @@ onMounted(() => {
     conectar(); 
 });
 
-
+// 1. CORRECCIÓN: Filtro en cascada tolerante a objetos y llaves naturales
 const salasFiltradas = computed(() => {
     if (!nuevaReserva.value.edificio) return [];
-    return salas.value.filter(s => String(s.edificio) === String(nuevaReserva.value.edificio));
+    return salas.value.filter(s => {
+        // Extraemos de forma segura el nombre del edificio de la sala, sea objeto o string
+        const edificioSala = typeof s.edificio === 'object' && s.edificio !== null 
+            ? (s.edificio.nombre_edificio || s.edificio.nombre) 
+            : s.edificio;
+            
+        return String(edificioSala) === String(nuevaReserva.value.edificio);
+    });
 });
 
 const esClase = computed(() => {
@@ -110,7 +117,6 @@ async function cargarDatos() {
     await cargarIdentidad();
 
     try {
-        
         const filtros = {
             fecha_inicio: nuevaReserva.value.fecha,
             fecha_fin: nuevaReserva.value.fecha
@@ -159,11 +165,11 @@ async function cargarDatos() {
             let sNombre = 'Sala';
             
             if (r.sala && typeof r.sala === 'object') {
-                sId = r.sala.id;
+                sId = r.sala.id || r.sala.clave_sala;
                 sNombre = r.sala.nombre_sala || r.sala.nombre;
             } else {
                 sNombre = String(r.sala);
-                const match = salas.value.find(s => s.nombre_sala === sNombre);
+                const match = salas.value.find(s => (s.nombre_sala || s.nombre) === sNombre);
                 if (match) sId = match.id || match.clave_sala;
             }
 
@@ -245,17 +251,25 @@ const opcionesFin = computed(() => {
     return horas;
 });
 
-
+// 2. CORRECCIÓN: Grid de estado de salas adaptado para llaves naturales tipo String
 const estadoSalas = computed(() => {
     const dia = nuevaReserva.value.fecha;
     if (!dia || !nuevaReserva.value.edificio) return [];
 
-    const salasAMostrar = salas.value.filter(s => String(s.edificio) === String(nuevaReserva.value.edificio));
+    // Filtramos las salas comparando el nombre del edificio de manera segura
+    const salasAMostrar = salas.value.filter(s => {
+        const edificioSala = typeof s.edificio === 'object' && s.edificio !== null 
+            ? (s.edificio.nombre_edificio || s.edificio.nombre) 
+            : s.edificio;
+        return String(edificioSala) === String(nuevaReserva.value.edificio);
+    });
 
     return salasAMostrar.map(sala => {
         const id = sala.id || sala.clave_sala;
         const nombre = sala.nombre_sala || sala.nombre;
-        const nombreEdificio = sala.edificio || 'Edificio no asignado';
+        const nombreEdificio = typeof sala.edificio === 'object' && sala.edificio !== null 
+            ? (sala.edificio.nombre_edificio || sala.edificio.nombre) 
+            : (sala.edificio || 'Edificio no asignado');
 
         const ocupaciones = reservasExistentes.value.filter(r => {
             const matchId = r.salaId && String(r.salaId) === String(id);
@@ -285,7 +299,6 @@ const estadoSalas = computed(() => {
         };
     });
 });
-
 
 async function crearReserva() {
     error.value = null;
@@ -389,7 +402,6 @@ async function cancelar(id, horarioDesc) {
 }
 
 function seleccionar(id) { nuevaReserva.value.sala = id; }
-
 </script>
 
 <template>

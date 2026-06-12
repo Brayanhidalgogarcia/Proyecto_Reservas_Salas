@@ -141,8 +141,8 @@
                 <label class="form-label fw-bold small text-dark-emphasis">División de Adscripción</label>
                 <select class="form-select bg-light border-light-subtle" v-model="formulario.division" required>
                   <option :value="null">Seleccionar...</option>
-                  <option v-for="div in divisiones" :key="div.id || div.clave_division" :value="div.id || div.clave_division">
-                    {{ div.nombre_division || div.nombre || div.clave_division }}
+                  <option v-for="div in divisiones" :key="div.nombre_division" :value="div.nombre_division">
+                    {{ div.nombre_division }}
                   </option>
                 </select>
               </div>
@@ -292,11 +292,13 @@ const mostrarMensaje = (tipo, texto, icono) => {
 
 const ocultarMensaje = () => { mensaje.texto = ''; };
 
+// CÓDIGO CORREGIDO
 const obtenerNombreDivision = (divisionIdObj) => {
   if (!divisionIdObj) return 'Sin Asignar';
-  const divId = typeof divisionIdObj === 'object' ? (divisionIdObj.id || divisionIdObj.clave_division) : divisionIdObj;
-  const div = divisiones.value.find(d => String(d.id || d.clave_division) === String(divId));
-  return div ? (div.nombre_division || div.nombre || div.clave_division) : 'División Desconocida';
+  // Extrae la llave primaria real de la división
+  const divId = typeof divisionIdObj === 'object' ? divisionIdObj.nombre_division : divisionIdObj;
+  const div = divisiones.value.find(d => String(d.nombre_division) === String(divId));
+  return div ? div.nombre_division : 'División Desconocida';
 };
 </script>
 

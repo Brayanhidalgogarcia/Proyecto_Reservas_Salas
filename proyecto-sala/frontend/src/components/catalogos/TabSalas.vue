@@ -120,8 +120,8 @@
                 <label class="form-label fw-bold small text-dark-emphasis">Edificio de Ubicación</label>
                 <select class="form-select bg-light border-light-subtle" v-model="formulario.edificio" required>
                   <option :value="null">Seleccionar Edificio...</option>
-                  <option v-for="ed in edificios" :key="ed.id" :value="ed.id">
-                    {{ ed.nombre_edificio }}
+                  <option v-for="ed in edificios" :key="ed.nombre_edificio" :value="ed.nombre_edificio">
+                      {{ ed.nombre_edificio }}
                   </option>
                 </select>
                 <div v-if="edificios.length === 0" class="form-text small text-danger mt-1">
@@ -271,8 +271,9 @@ const ocultarMensaje = () => { mensaje.texto = ''; };
 
 const obtenerNombreEdificio = (edificioIdObj) => {
   if (!edificioIdObj) return 'Desconocido';
-  const edId = typeof edificioIdObj === 'object' ? edificioIdObj.id : edificioIdObj;
-  const ed = edificios.value.find(e => String(e.id) === String(edId));
+  // Soporta la llave natural en lugar del ID genérico
+  const edId = typeof edificioIdObj === 'object' ? edificioIdObj.nombre_edificio : edificioIdObj;
+  const ed = edificios.value.find(e => String(e.nombre_edificio) === String(edId));
   return ed ? ed.nombre_edificio : 'Edificio no encontrado';
 };
 </script>
