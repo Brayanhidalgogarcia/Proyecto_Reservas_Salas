@@ -4,11 +4,20 @@ import ApiService from '@/services/ApiService.js';
 import { useWebSocket } from '@/composables/useWebSocket.js';
 
 const { conectar } = useWebSocket(cargarDatos);
+let intervaloVigia;
 
 onMounted(() => {
     checkEstadoServicio();
     cargarDatos();
     conectar(); 
+
+    intervaloVigia = setInterval(() => {
+        checkEstadoServicio();
+    }, 60000);
+});
+
+onUnmounted(() => {
+    clearInterval(intervaloVigia);
 });
 
 // 1. CORRECCIÓN: Filtro en cascada tolerante a objetos y llaves naturales

@@ -5,13 +5,26 @@ import SalaCard from '@/components/SalaCard.vue';
 import ApiService from '@/services/ApiService.js';
 import { useWebSocket } from '@/composables/useWebSocket.js';
 
+
+let intervaloVigia;
+
 const router = useRouter(); 
 const { conectar } = useWebSocket(cargarDatos);
 onMounted(() => {
   checkEstadoServicio(); 
   cargarDatos(); 
   conectar();
+
+  intervaloVigia = setInterval(() => {
+    checkEstadoServicio();
+  }, 60000);
 });
+
+onUnmounted(() => {
+  clearInterval(intervaloVigia);
+});
+
+
 
 const HORA_APERTURA = 8; 
 const HORA_CIERRE = 16;  
