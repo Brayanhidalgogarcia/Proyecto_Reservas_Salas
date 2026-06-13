@@ -1,24 +1,20 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import ApiService from '@/services/ApiService.js';
 import { useWebSocket } from '@/composables/useWebSocket.js';
 
 const { conectar } = useWebSocket(cargarDatos);
-let intervaloVigia;
+
 
 onMounted(() => {
     checkEstadoServicio();
     cargarDatos();
     conectar(); 
 
-    intervaloVigia = setInterval(() => {
-        checkEstadoServicio();
-    }, 60000);
+   
 });
 
-onUnmounted(() => {
-    clearInterval(intervaloVigia);
-});
+
 
 // 1. CORRECCIÓN: Filtro en cascada tolerante a objetos y llaves naturales
 const salasFiltradas = computed(() => {
@@ -51,7 +47,7 @@ const checkEstadoServicio = () => {
   const ahora = new Date();
   const horaActual = ahora.getHours();
 
-  if (horaActual < 8 || horaActual >= 16) {
+  if (horaActual < 8 || horaActual >= 23) {
     servicioCerrado.value = true;
   } else {
     servicioCerrado.value = false;
@@ -186,7 +182,7 @@ async function cargarDatos() {
                 id: r.id,
                 salaId: sId,
                 salaNombre: sNombre,
-                edificio: r.edificio || 'Sin Edificio',
+                edificio: typeof r.edificio === 'object' && r.edificio !== null ? (r.edificio.nombre_edificio || r.edificio.nombre) : (r.edificio || 'Sin Edificio'),
                 actividad: r.actividad || 'Sin Actividad',
                 requerimientos: r.requerimientos || null,
                 maestro: r.maestro_nombre || r.maestro,
@@ -411,6 +407,11 @@ async function cancelar(id, horarioDesc) {
 }
 
 function seleccionar(id) { nuevaReserva.value.sala = id; }
+
+watch(() => nuevaReserva.value.fecha, () => {
+    console.log("La fecha cambió a:", nuevaReserva.value.fecha, "re-calculando agenda...");
+    cargarDatos();
+});
 </script>
 
 <template>
@@ -488,7 +489,7 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
                                 <label class="form-label small fw-bold text-muted">EDIFICIO</label>
                                 <select class="form-select" v-model="nuevaReserva.edificio" @change="nuevaReserva.sala = null">
                                     <option :value="null">Seleccionar...</option>
-                                    <option v-for="ed in edificios" :key="ed.id" :value="ed.id">{{ ed.nombre_edificio }}</option>
+                                    <option v-for="ed in edificios" :key="ed.nombre_edificio" :value="ed.nombre_edificio">{{ ed.nombre_edificio }}</option>
                                 </select>
                             </div>
 
@@ -496,7 +497,7 @@ function seleccionar(id) { nuevaReserva.value.sala = id; }
                                 <label class="form-label small fw-bold text-muted">SALA</label>
                                 <select class="form-select" v-model="nuevaReserva.sala" :disabled="!nuevaReserva.edificio" :class="{'bg-light text-muted': !nuevaReserva.edificio}">
                                     <option :value="null">{{ nuevaReserva.edificio ? 'Seleccionar...' : 'Primero elige un edificio' }}</option>
-                                    <option v-for="s in salasFiltradas" :key="s.id" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
+                                    <option v-for="s in salasFiltradas" :key="s.clave_sala" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
                                 </select>
                             </div>
 
