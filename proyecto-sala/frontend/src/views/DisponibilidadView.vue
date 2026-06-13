@@ -62,11 +62,8 @@ watch(fechaSeleccionada, () => {
 
 const cargarIdentidad = () => {
   try {
-    const userString = localStorage.getItem('usuario_info');
-    if (userString) {
-      const user = JSON.parse(userString);
-      isSuperUser.value = user.is_superuser || false;
-    }
+    const isSuper = localStorage.getItem('is_superuser');
+    isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
   } catch (error) {
     console.warn("No se pudo leer la identidad del usuario:", error);
     isSuperUser.value = false;
@@ -117,7 +114,18 @@ async function cargarDatos() {
         fin: formatearHora(item.fin),
         inicioRaw: item.inicio, 
         actividad: item.actividad || 'Actividad',
-        detalleActividad: item.asignatura || item.tema || 'Sin descripción',
+        detalleActividad: (() => {
+            if (item.asignatura && item.tema) {
+                return `${item.asignatura} — Tema: ${item.tema}`;
+            } else if (item.asignatura) {
+                return item.asignatura;
+            } else if (item.tema) {
+                return item.tema;
+            }
+            return 'Sin descripción';
+        })(),
+
+        
         requerimientos: item.requerimientos || null
       };
     });

@@ -122,16 +122,13 @@ async function cargarDatos() {
     await cargarIdentidad();
 
     try {
-        const filtros = {
-            fecha_inicio: nuevaReserva.value.fecha,
-            fecha_fin: nuevaReserva.value.fecha
-        };
+       
 
         const [resMaestros, resAsignaturas, resSalas, resReservas, resEdificios, resActividades] = await Promise.all([
             ApiService.obtenerMaestros(),
             ApiService.obtenerAsignaturas(),
             ApiService.obtenerSalas(),
-            ApiService.obtenerReservas(filtros), 
+            ApiService.obtenerReservas(), 
             ApiService.obtenerEdificios(),  
             ApiService.obtenerActividades() 
         ]);
@@ -178,17 +175,41 @@ async function cargarDatos() {
                 if (match) sId = match.id || match.clave_sala;
             }
 
+            // CORRECCIÓN: Función que obliga a leer la fecha en la zona horaria local de México
+            const extraerFechaLocal = (isoString) => {
+                if (!isoString) return '';
+                const f = new Date(isoString);
+                const anio = f.getFullYear();
+                const mes = String(f.getMonth() + 1).padStart(2, '0');
+                const dia = String(f.getDate()).padStart(2, '0');
+                return `${anio}-${mes}-${dia}`;
+            };
+
             return {
                 id: r.id,
                 salaId: sId,
                 salaNombre: sNombre,
                 edificio: typeof r.edificio === 'object' && r.edificio !== null ? (r.edificio.nombre_edificio || r.edificio.nombre) : (r.edificio || 'Sin Edificio'),
                 actividad: r.actividad || 'Sin Actividad',
+                detalleActividad: (() => {
+                    if (r.asignatura && r.tema) {
+                        return `${r.asignatura} — Tema: ${r.tema}`;
+                    } else if (r.asignatura) {
+                        return r.asignatura;
+                    } else if (r.tema) {
+                        return r.tema;
+                    }
+                    return 'Sin tema';
+                })(),
+                
                 requerimientos: r.requerimientos || null,
                 maestro: r.maestro_nombre || r.maestro,
                 inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
                 finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
-                fecha: r.inicio ? r.inicio.split('T')[0] : '',
+                
+                // REEMPLAZAMOS EL 'SPLIT' POR NUESTRA FUNCIÓN SEGURA
+                fecha: extraerFechaLocal(r.inicio), 
+                
                 creadoPor: r.creado_por_id 
             };
         });
@@ -573,7 +594,10 @@ watch(() => nuevaReserva.value.fecha, () => {
                                             
                                             <div class="text-secondary" style="font-size: 0.9em;">
                                                 <div class="fw-bold text-dark">{{ res.maestro }}</div>
-                                                <div><span class="badge bg-secondary text-white me-1">{{ res.actividad }}</span> {{ res.tema || 'Sin tema' }}</div>
+                                                <div>
+                                                    <span class="badge bg-secondary text-white me-1">{{ res.actividad }}</span> 
+                                                    <span class="fst-italic">{{ res.detalleActividad }}</span>
+                                                </div>
                                             </div>
 
                                             <div v-if="isSuperUser && res.requerimientos" class="mt-2 p-2 bg-warning-subtle border border-warning rounded" style="font-size: 0.85em;">
