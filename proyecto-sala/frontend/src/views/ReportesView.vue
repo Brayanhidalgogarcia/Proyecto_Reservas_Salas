@@ -2,14 +2,14 @@
 import { ref, onMounted, computed } from 'vue';
 import ApiService from '@/services/ApiService.js'; 
 import ReportesService from '@/services/ReporteServices.js';
-
 import jsPDF from 'jspdf';
-
 import autoTable from 'jspdf-autotable'; 
-
 
 const barChartRef = ref(null);
 const pieChartRef = ref(null);
+// Referencias para descargar en PDF después (opcional)
+const picoChartRef = ref(null);
+const equipChartRef = ref(null);
 
 import {
   Chart as ChartJS,
@@ -42,17 +42,20 @@ const fechaFin = ref('');
 const salaSeleccionada = ref('');
 const tipoReporteGenerado = ref('GENERAL'); 
 
-// REFACTORIZADO: Estructura completa de KPIs para el Tablero Superior
+// 1. ESTRUCTURA DE KPIs AMPLIADA
 const stats = ref({
     salaTop: 'N/A',
     maestroTop: 'N/A',
     totalReservas: 0,
-    horasTotales: 0
+    horasTotales: 0,
+    aprovechamiento: '0%' // <-- NUEVO KPI ESTRATÉGICO
 });
 
+// 2. REFERENCIAS PARA LAS 4 GRÁFICAS
 const chartDataSalas = ref({ labels: [], datasets: [] });
-// NUEVO: Datos para la segunda gráfica (Distribución por tipo de actividad)
 const chartDataActividades = ref({ labels: [], datasets: [] });
+const chartDataHorasPico = ref({ labels: [], datasets: [] }); // <-- NUEVO
+const chartDataEquipamiento = ref({ labels: [], datasets: [] }); // <-- NUEVO
 
 const chartOptions = { responsive: true, maintainAspectRatio: false };
 
@@ -75,7 +78,6 @@ function configureFechasDefault() {
     fechaInicio.value = new Date(primerDia - offset).toISOString().split('T')[0];
     fechaFin.value = new Date(ultimoDia - offset).toISOString().split('T')[0];
 }
-// Alias para mantener compatibilidad con tu llamada en onMounted
 function configurarFechasDefault() { configureFechasDefault(); }
 
 async function cargarHistorial() {
@@ -106,36 +108,46 @@ async function generarAnalisisEnVivo() {
   reservas.value = [];
 
   try {
-    const payloadFiltros = {
-        fecha_inicio: fechaInicio.value, 
-        fecha_fin: fechaFin.value        
-    };
-    
-    if (salaSeleccionada.value) {
-        payloadFiltros.sala = salaSeleccionada.value;
+    const response = await ApiService.obtenerReservas();
+    const datosCrudos = response.data || response;
+
+    if (!Array.isArray(datosCrudos)) throw new Error("Datos inválidos devueltos por el servidor.");
+
+    const inicioRango = new Date(fechaInicio.value + "T00:00:00");
+    const finRango = new Date(fechaFin.value + "T23:59:59");
+
+    const datosFiltrados = datosCrudos.filter(r => {
+        if (!r.inicio) return false;
+        const fechaReserva = new Date(r.inicio);
+        let entraEnFecha = fechaReserva >= inicioRango && fechaReserva <= finRango;
+        
+        let entraEnSala = true;
+        if (salaSeleccionada.value) {
+            const sNombre = typeof r.sala === 'object' ? (r.sala.nombre_sala || r.sala.nombre) : r.sala;
+            entraEnSala = String(sNombre) === String(salaSeleccionada.value);
+        }
+        return entraEnFecha && entraEnSala;
+    });
+
+    if (datosFiltrados.length === 0) {
+        error.value = "No se encontraron actividades registradas en este rango de fechas.";
+        resetStats();
+        return;
     }
 
-    
-    const response = await ApiService.obtenerReservas(payloadFiltros);
-    const datosFiltrados = response.data || response;
-
-    if (!Array.isArray(datosFiltrados)) throw new Error("Datos inválidos devueltos por el servidor.");
-
-   
     reservas.value = datosFiltrados;
-    
     calcularEstadisticas();
     prepararGraficos();
 
   } catch (err) {
-    error.value = 'Error al analizar datos.';
+    error.value = 'Error al procesar el análisis de datos. Verifique la conexión.';
     console.error(err);
   } finally {
     cargando.value = false;
   }
 }
 
-// REFACTORIZADO: Masticación profunda de métricas para alimentar los 4 KPIs
+// 3. CÁLCULO DE APROVECHAMIENTO (TIEMPO MUERTO)
 function calcularEstadisticas() {
     if (reservas.value.length === 0) { resetStats(); return; }
     
@@ -144,15 +156,12 @@ function calcularEstadisticas() {
     let totalHoras = 0;
     
     reservas.value.forEach(r => {
-        // Conteo de salas
         const s = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala || 'Desconocido');
         conteoSalas[s] = (conteoSalas[s] || 0) + 1;
         
-        // Conteo de maestros
         const m = r.maestro_nombre || r.maestro || 'Desconocido';
         conteoMaestros[m] = (conteoMaestros[m] || 0) + 1;
         
-        // Sumatoria de horas
         const inicio = new Date(r.inicio);
         const fin = new Date(r.fin);
         const duracion = (fin - inicio) / (1000 * 60 * 60); 
@@ -163,6 +172,17 @@ function calcularEstadisticas() {
     stats.value.maestroTop = getKeyWithMaxVal(conteoMaestros);
     stats.value.totalReservas = reservas.value.length;
     stats.value.horasTotales = totalHoras.toFixed(1);
+
+    // Matemáticas de optimización de infraestructura
+    const iniRango = new Date(fechaInicio.value);
+    const finRango = new Date(fechaFin.value);
+    const dias = Math.max(1, Math.ceil((finRango - iniRango) / (1000 * 60 * 60 * 24)));
+    const salasTotales = salas.value.length > 0 ? salas.value.length : Object.keys(conteoSalas).length;
+    
+    // Asumimos 8 horas hábiles al día institucionales
+    const horasPosibles = dias * 8 * salasTotales; 
+    const porcentaje = horasPosibles > 0 ? ((totalHoras / horasPosibles) * 100).toFixed(1) : 0;
+    stats.value.aprovechamiento = `${porcentaje}%`;
 }
 
 function getKeyWithMaxVal(obj) {
@@ -172,17 +192,23 @@ function getKeyWithMaxVal(obj) {
 }
 
 function resetStats() {
-    stats.value = { salaTop: 'N/A', maestroTop: 'N/A', totalReservas: 0, horasTotales: 0 };
+    stats.value = { salaTop: 'N/A', maestroTop: 'N/A', totalReservas: 0, horasTotales: 0, aprovechamiento: '0%' };
     chartDataSalas.value = { labels: [], datasets: [] };
     chartDataActividades.value = { labels: [], datasets: [] };
+    chartDataHorasPico.value = { labels: [], datasets: [] };
+    chartDataEquipamiento.value = { labels: [], datasets: [] };
 }
 
-// REFACTORIZADO: Generación paralela de datos para Gráfica de Barras y Gráfica de Dona
+// 4. PREPARACIÓN DE LAS DOS NUEVAS GRÁFICAS DIRECTIVAS
 function prepararGraficos() {
     if (reservas.value.length === 0) return;
     
     const conteoSalas = {};
     const conteoActividades = {};
+    const conteoHoras = {};
+    
+    const palabrasClaveEquipos = ['proyector', 'bocina', 'audio', 'hdmi', 'micrófono', 'microfono', 'extensión', 'internet', 'clima'];
+    const conteoEquipos = {};
     
     reservas.value.forEach(r => {
         const s = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala || 'Desconocido');
@@ -190,27 +216,47 @@ function prepararGraficos() {
         
         const act = r.actividad || 'Actividad General';
         conteoActividades[act] = (conteoActividades[act] || 0) + 1;
+
+        // Minería: Extracción de Horas Pico
+        const hora = new Date(r.inicio).getHours();
+        const etiquetaHora = `${String(hora).padStart(2, '0')}:00`;
+        conteoHoras[etiquetaHora] = (conteoHoras[etiquetaHora] || 0) + 1;
+
+        // Minería: Búsqueda de Requerimientos
+        if (r.requerimientos && typeof r.requerimientos === 'string') {
+            const reqTexto = r.requerimientos.toLowerCase();
+            palabrasClaveEquipos.forEach(equipo => {
+                if (reqTexto.includes(equipo)) {
+                    const nombreLimpio = equipo === 'microfono' ? 'micrófono' : equipo;
+                    conteoEquipos[nombreLimpio] = (conteoEquipos[nombreLimpio] || 0) + 1;
+                }
+            });
+        }
     });
     
-    // Gráfica de barras (Salas)
+    const horasOrdenadas = Object.keys(conteoHoras).sort();
+    
     chartDataSalas.value = {
         labels: Object.keys(conteoSalas),
-        datasets: [{ 
-            label: 'Horas de Uso por Sala', 
-            backgroundColor: '#005f86', 
-            borderRadius: 6,
-            data: Object.values(conteoSalas) 
-        }]
+        datasets: [{ label: 'Horas de Uso por Sala', backgroundColor: '#005f86', borderRadius: 6, data: Object.values(conteoSalas) }]
     };
     
-    // Gráfica de dona (Tipos de Actividades)
     chartDataActividades.value = {
         labels: Object.keys(conteoActividades),
-        datasets: [{
-            backgroundColor: ['#005f86', '#2ca02c', '#ff7f0e', '#d62728'],
-            borderWidth: 2,
-            data: Object.values(conteoActividades)
-        }]
+        datasets: [{ backgroundColor: ['#005f86', '#2ca02c', '#ff7f0e', '#d62728'], borderWidth: 2, data: Object.values(conteoActividades) }]
+    };
+
+    // Datos listos para la gráfica de saturación de horarios
+    chartDataHorasPico.value = {
+        labels: horasOrdenadas,
+        datasets: [{ label: 'Reservas Iniciadas', backgroundColor: '#ff7f0e', borderRadius: 4, data: horasOrdenadas.map(h => conteoHoras[h]) }]
+    };
+
+    // Datos listos para la gráfica de demanda de equipamiento
+    const equiposOrdenados = Object.keys(conteoEquipos).sort((a, b) => conteoEquipos[b] - conteoEquipos[a]);
+    chartDataEquipamiento.value = {
+        labels: equiposOrdenados.map(e => e.charAt(0).toUpperCase() + e.slice(1)), 
+        datasets: [{ label: 'Veces Solicitado', backgroundColor: '#2ca02c', borderRadius: 4, data: equiposOrdenados.map(e => conteoEquipos[e]) }]
     };
 }
 
@@ -254,15 +300,12 @@ const reporteDocente = computed(() => {
         .sort((a, b) => b.reservas - a.reservas);
 });
 
+// El generador de PDF se queda intacto por el momento, podemos agregarle las nuevas gráficas después.
 const generarBlobPDF = async () => {
-    // 1. Inicializar documento en vertical, milímetros, tamaño Carta (A4)
     const doc = new jsPDF('p', 'mm', 'a4');
-    
-    // 2. Variables de estilo institucional
-    const colorPrimario = [0, 95, 134]; // Azul institucional #005f86
-    let posY = 20; // Coordenada vertical inicial
+    const colorPrimario = [0, 95, 134]; 
+    let posY = 20; 
 
-    // 3. Dibujar Encabezados del Documento
     doc.setFontSize(16);
     doc.setTextColor(...colorPrimario);
     doc.setFont('helvetica', 'bold');
@@ -280,7 +323,6 @@ const generarBlobPDF = async () => {
     
     posY += 15;
 
-    // 4. Dibujar KPIs Resumidos
     doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
     doc.text(`Total de Reservas: ${stats.value.totalReservas}`, 14, posY);
@@ -289,25 +331,21 @@ const generarBlobPDF = async () => {
     
     posY += 15;
 
-    // 5. Inyectar las Gráficas (Extrayendo el Base64 directamente de Vue)
     if (barChartRef.value && barChartRef.value.chart && pieChartRef.value && pieChartRef.value.chart) {
         const barImgBase64 = barChartRef.value.chart.toBase64Image();
         const pieImgBase64 = pieChartRef.value.chart.toBase64Image();
         
-        // Parámetros: (Imagen, Formato, X, Y, Ancho, Alto)
         doc.addImage(barImgBase64, 'PNG', 14, posY, 110, 60);
         doc.addImage(pieImgBase64, 'PNG', 135, posY, 60, 60);
         
-        posY += 70; // Desplazamos el cursor debajo de las gráficas
+        posY += 70; 
     }
 
-    // 6. Preparar Datos Estructurales para la Tabla Vectorial
     let columnas = [];
     let filas = [];
 
     if (tipoReporteGenerado.value === 'GENERAL') {
         columnas = [['Fecha', 'Sala', 'Docente', 'Horario Asignado']];
-        // OJO: Enviamos TODO el arreglo, no solo los primeros 50 como en el HTML
         filas = reservas.value.map(r => [
             new Date(r.inicio).toLocaleDateString('es-MX'),
             (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : r.sala,
@@ -331,7 +369,6 @@ const generarBlobPDF = async () => {
         ]);
     }
 
-    // 7. Renderizar la Tabla Vectorial (Calcula saltos de página sola)
     autoTable(doc, {
         startY: posY,
         head: columnas,
@@ -342,7 +379,6 @@ const generarBlobPDF = async () => {
         margin: { left: 14, right: 14 }
     });
 
-    // 8. Retornar el archivo binario para guardarlo o descargarlo
     return doc.output('blob');
 };
 
@@ -389,7 +425,6 @@ const descargarPDFLocal = async () => {
     }
 };
 </script>
-
 <template>
   <div class="container-fluid p-4">
     
@@ -562,8 +597,8 @@ const descargarPDFLocal = async () => {
                     </div>
                 </div>
 
-                <div class="row g-3 mb-4">
-                    <div class="col-md-3 col-sm-6">
+                <div class="row g-3 mb-4 row-cols-2 row-cols-md-3 row-cols-xl-5">
+                    <div class="col">
                         <div class="card h-100 border-0 border-start border-4 border-primary bg-light bg-opacity-50 shadow-sm rounded-3">
                             <div class="card-body p-3">
                                 <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Sala Más Demandada</small>
@@ -571,7 +606,7 @@ const descargarPDFLocal = async () => {
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3 col-sm-6">
+                    <div class="col">
                         <div class="card h-100 border-0 border-start border-4 border-success bg-light bg-opacity-50 shadow-sm rounded-3">
                             <div class="card-body p-3">
                                 <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Horas Totales Uso</small>
@@ -579,25 +614,33 @@ const descargarPDFLocal = async () => {
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3 col-sm-6">
+                    <div class="col">
                         <div class="card h-100 border-0 border-start border-4 border-info bg-light bg-opacity-50 shadow-sm rounded-3">
                             <div class="card-body p-3">
-                                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Volumen de Reservas</small>
+                                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Volumen Reservas</small>
                                 <h5 class="fw-bold text-info mb-0">{{ stats.totalReservas }} <span class="fs-6 fw-normal text-muted">bloques</span></h5>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3 col-sm-6">
+                    <div class="col">
                         <div class="card h-100 border-0 border-start border-4 border-warning bg-light bg-opacity-50 shadow-sm rounded-3">
                             <div class="card-body p-3">
-                                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Docente con Mayor Carga</small>
+                                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Docente Top</small>
                                 <h5 class="fw-bold text-warning-emphasis mb-0 text-truncate" :title="stats.maestroTop">{{ stats.maestroTop }}</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card h-100 border-0 border-start border-4 border-secondary bg-light bg-opacity-50 shadow-sm rounded-3">
+                            <div class="card-body p-3">
+                                <small class="text-muted text-uppercase fw-bold d-block mb-1" style="font-size: 0.65rem;">Aprovechamiento</small>
+                                <h5 class="fw-bold text-secondary mb-0">{{ stats.aprovechamiento }} <span class="fs-6 fw-normal text-muted">global</span></h5>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="row g-4 mb-5">
+                <div class="row g-4 mb-4">
                     <div class="col-lg-8">
                         <div class="card border border-light-subtle rounded shadow-sm h-100 bg-white">
                             <div class="card-header bg-light border-bottom-0 pt-3 pb-0">
@@ -615,6 +658,29 @@ const descargarPDFLocal = async () => {
                             </div>
                             <div class="card-body d-flex align-items-center justify-content-center" style="min-height: 230px;">
                                 <Pie ref="pieChartRef" :data="chartDataActividades" :options="chartOptions" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4 mb-5">
+                    <div class="col-lg-7">
+                        <div class="card border border-light-subtle rounded shadow-sm h-100 bg-white">
+                            <div class="card-header bg-light border-bottom-0 pt-3 pb-0 d-flex justify-content-between">
+                                <h6 class="fw-bold text-dark mb-0"><i class="bi bi-clock-history me-2 text-warning"></i>Saturación: Horas Pico</h6>
+                            </div>
+                            <div class="card-body" style="min-height: 230px;">
+                                <Bar ref="picoChartRef" :data="chartDataHorasPico" :options="chartOptions" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="card border border-light-subtle rounded shadow-sm h-100 bg-white">
+                            <div class="card-header bg-light border-bottom-0 pt-3 pb-0">
+                                <h6 class="fw-bold text-dark mb-0"><i class="bi bi-projector me-2 text-success"></i>Demanda de Equipamiento</h6>
+                            </div>
+                            <div class="card-body d-flex align-items-center justify-content-center" style="min-height: 230px;">
+                                <Bar ref="equipChartRef" :data="chartDataEquipamiento" :options="chartOptions" />
                             </div>
                         </div>
                     </div>
