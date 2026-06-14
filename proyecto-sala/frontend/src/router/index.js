@@ -16,7 +16,8 @@ const router = createRouter({
       component: LoginView
     },
     {
-      path: '/home',
+      path: '/',
+      alias: '/home',
       name: 'home',
       component: InicioView,
       meta: {title: 'Inicio', requiresAuth: true },
