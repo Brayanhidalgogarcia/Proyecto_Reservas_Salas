@@ -54,7 +54,7 @@ async function login() {
         localStorage.setItem('user_division', data.division || '');
 
         
-        window.location.href = '/disponibilidad'; 
+        window.location.href = '/home'; 
 
     } else {
         

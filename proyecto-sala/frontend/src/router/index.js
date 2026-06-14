@@ -5,6 +5,7 @@ import ApartarView from '@/views/ApartarView.vue'
 import ReportesView from '@/views/ReportesView.vue'
 import LoginView from '@/views/LoginView.vue'
 import CatalogosView from '@/views/CatalogosView.vue'
+import InicioView from '@/views/InicioView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,9 +16,11 @@ const router = createRouter({
       component: LoginView
     },
     {
-      path: '/',
+      path: '/home',
       name: 'home',
-      redirect: '/disponibilidad'
+      component: InicioView,
+      meta: {title: 'Inicio', requiresAuth: true },
+  
     },
     {
       path: '/disponibilidad',
