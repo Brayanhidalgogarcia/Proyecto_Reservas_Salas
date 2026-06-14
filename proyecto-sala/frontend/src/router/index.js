@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AltaUsuarioView from '@/views/AltaUsuarioView.vue'
 import DisponibilidadView from '@/views/DisponibilidadView.vue'
-import ApartarView from '../views/ApartarView.vue'
-import ReportesView from '../views/ReportesView.vue'
+import ApartarView from '@/views/ApartarView.vue'
+import ReportesView from '@/views/ReportesView.vue'
 import LoginView from '@/views/LoginView.vue'
 import CatalogosView from '@/views/CatalogosView.vue'
 
