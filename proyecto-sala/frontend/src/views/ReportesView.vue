@@ -57,7 +57,11 @@ const chartDataActividades = ref({ labels: [], datasets: [] });
 const chartDataHorasPico = ref({ labels: [], datasets: [] }); // <-- NUEVO
 const chartDataEquipamiento = ref({ labels: [], datasets: [] }); // <-- NUEVO
 
-const chartOptions = { responsive: true, maintainAspectRatio: false };
+const chartOptions = { 
+    responsive: true, 
+    maintainAspectRatio: false,
+    devicePixelRatio: 4 // <-- LA MAGIA: Fuerza renderizado en Ultra Alta Resolución
+};
 
 onMounted(async () => {
   await cargarHistorial();
@@ -300,12 +304,15 @@ const reporteDocente = computed(() => {
         .sort((a, b) => b.reservas - a.reservas);
 });
 
-// El generador de PDF se queda intacto por el momento, podemos agregarle las nuevas gráficas después.
 const generarBlobPDF = async () => {
+    // 1. Inicializar documento en vertical, milímetros, tamaño Carta (A4)
     const doc = new jsPDF('p', 'mm', 'a4');
-    const colorPrimario = [0, 95, 134]; 
-    let posY = 20; 
+    
+    // 2. Variables de estilo institucional
+    const colorPrimario = [0, 95, 134]; // Azul institucional #005f86
+    let posY = 20; // Coordenada vertical inicial
 
+    // 3. Dibujar Encabezados del Documento
     doc.setFontSize(16);
     doc.setTextColor(...colorPrimario);
     doc.setFont('helvetica', 'bold');
@@ -323,24 +330,49 @@ const generarBlobPDF = async () => {
     
     posY += 15;
 
+    // 4. NUEVO: Dibujar TODOS los 5 KPIs en dos filas
     doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
+    
+    // Fila 1 de KPIs
     doc.text(`Total de Reservas: ${stats.value.totalReservas}`, 14, posY);
     doc.text(`Horas de Uso: ${stats.value.horasTotales} hrs`, 70, posY);
     doc.text(`Sala Top: ${stats.value.salaTop}`, 125, posY);
     
-    posY += 15;
+    posY += 8; // Salto de línea pequeño
+    
+    // Fila 2 de KPIs
+    doc.text(`Docente Top: ${stats.value.maestroTop}`, 14, posY);
+    doc.text(`Aprovechamiento Global: ${stats.value.aprovechamiento}`, 125, posY);
+    
+    posY += 15; // Salto de línea hacia las gráficas
 
+    // 5. NUEVO: Inyectar las 4 Gráficas (Extrayendo el Base64 de las 4 referencias)
     if (barChartRef.value && barChartRef.value.chart && pieChartRef.value && pieChartRef.value.chart) {
+        // Imágenes de la primera fila
         const barImgBase64 = barChartRef.value.chart.toBase64Image();
         const pieImgBase64 = pieChartRef.value.chart.toBase64Image();
         
+        // Parámetros: (Imagen, Formato, Eje X, Eje Y, Ancho, Alto)
         doc.addImage(barImgBase64, 'PNG', 14, posY, 110, 60);
         doc.addImage(pieImgBase64, 'PNG', 135, posY, 60, 60);
         
-        posY += 70; 
+        // Revisamos si las nuevas gráficas ya se renderizaron para agregarlas a la segunda fila
+        if (picoChartRef.value && picoChartRef.value.chart && equipChartRef.value && equipChartRef.value.chart) {
+            const picoImgBase64 = picoChartRef.value.chart.toBase64Image();
+            const equipImgBase64 = equipChartRef.value.chart.toBase64Image();
+            
+            // Las colocamos 70mm más abajo que la primera fila
+            doc.addImage(picoImgBase64, 'PNG', 14, posY + 70, 110, 60);
+            doc.addImage(equipImgBase64, 'PNG', 135, posY + 70, 60, 60);
+            
+            posY += 140; // Desplazamos el cursor de texto debajo de las DOS filas de gráficas
+        } else {
+            posY += 70; // Si algo falla con las nuevas, solo desplazamos el equivalente a una fila
+        }
     }
 
+    // 6. Preparar Datos Estructurales para la Tabla Vectorial (Sin cambios)
     let columnas = [];
     let filas = [];
 
@@ -369,6 +401,7 @@ const generarBlobPDF = async () => {
         ]);
     }
 
+    // 7. Renderizar la Tabla Vectorial (Calcula saltos de página sola)
     autoTable(doc, {
         startY: posY,
         head: columnas,
@@ -379,6 +412,7 @@ const generarBlobPDF = async () => {
         margin: { left: 14, right: 14 }
     });
 
+    // 8. Retornar el archivo binario para guardarlo o descargarlo
     return doc.output('blob');
 };
 
