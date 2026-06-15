@@ -10,9 +10,7 @@ from django.utils import timezone
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         
-        print("\n--- DATOS RECIBIDOS DESDE VUE ---")
-        print(attrs)
-        print("---------------------------------\n")
+        
        
         data = super().validate(attrs)
         

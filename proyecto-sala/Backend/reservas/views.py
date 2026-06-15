@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, generics
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, BasePermission, SAFE_METHODS
+from rest_framework.decorators import action
 
 from .models import Division, Asignatura, Sala, Maestro, Reserva, Usuario, Reporte,Actividad,Edificio
 from .serializers import (
@@ -95,6 +96,30 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         if user.is_superuser:
             return Usuario.objects.all()
         return Usuario.objects.filter(id=user.id) 
+    
+    # --- NUEVO ENDPOINT: ACTUALIZACIÓN DE CREDENCIALES ---
+    @action(detail=True, methods=['put'], permission_classes=[IsAdminUser])
+    def actualizar_password(self, request, pk=None):
+        # 1. Obtenemos al usuario específico por su ID
+        usuario = self.get_object()
+        
+        # 2. Extraemos el texto que enviaremos desde Vue
+        nueva_password = request.data.get('nueva_password')
+
+        if not nueva_password:
+            return Response(
+                {"detail": "Debes proporcionar una nueva contraseña."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 3. set_password() aplica la encriptación hash destructiva automáticamente
+        usuario.set_password(nueva_password)
+        usuario.save()
+
+        return Response(
+            {"detail": f"Credenciales actualizadas exitosamente para {usuario.username}."},
+            status=status.HTTP_200_OK
+        )
     
 class ReservaViewSet(viewsets.ModelViewSet):
     serializer_class = ReservaSerializer
