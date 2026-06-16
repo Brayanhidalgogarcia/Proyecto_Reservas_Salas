@@ -1,66 +1,52 @@
 <script setup>
+/**
+ * @file ReservarEspacioView.vue
+ * @description Módulo de operaciones para la creación y cancelación de reservas.
+ * Implementa validaciones de choque de horarios, restricciones por roles (Docente/Admin),
+ * y filtrado en cascada (Edificio -> Sala -> Horas Disponibles).
+ */
+
+// ==========================================
+// 1. IMPORTS
+// ==========================================
 import { ref, computed, onMounted, watch } from 'vue';
 import ApiService from '@/services/ApiService.js';
 import { useWebSocket } from '@/composables/useWebSocket.js';
+import HeaderInstitucional from '@/components/HeaderInstitucional.vue';
 
+// ==========================================
+// 2. CONFIGURACIÓN Y COMPOSABLES
+// ==========================================
 const { conectar } = useWebSocket(cargarDatos);
-
-
-onMounted(() => {
-    checkEstadoServicio();
-    cargarDatos();
-    conectar(); 
-
-   
-});
-
-
-
-// 1. CORRECCIÓN: Filtro en cascada tolerante a objetos y llaves naturales
-const salasFiltradas = computed(() => {
-    if (!nuevaReserva.value.edificio) return [];
-    return salas.value.filter(s => {
-        // Extraemos de forma segura el nombre del edificio de la sala, sea objeto o string
-        const edificioSala = typeof s.edificio === 'object' && s.edificio !== null 
-            ? (s.edificio.nombre_edificio || s.edificio.nombre) 
-            : s.edificio;
-            
-        return String(edificioSala) === String(nuevaReserva.value.edificio);
-    });
-});
-
-const esClase = computed(() => {
-    if (!nuevaReserva.value.actividad) return false;
-    const act = actividades.value.find(a => a.id === nuevaReserva.value.actividad);
-    return act && act.nombre_actividad === 'Asignatura';
-});
-
-function limpiarAsignaturaSiEsEvento() {
-    if (!esClase.value) {
-        nuevaReserva.value.asignatura = null;
-    }
-}
-
-const servicioCerrado = ref(false); 
-
-const checkEstadoServicio = () => {
-  const ahora = new Date();
-  const horaActual = ahora.getHours();
-
-  if (horaActual < 8 || horaActual >= 23) {
-    servicioCerrado.value = true;
-  } else {
-    servicioCerrado.value = false;
-  }
-};
 
 const HORARIO_APERTURA = 8;
 const HORARIO_CIERRE = 16;
 
+/**
+ * Calcula la fecha actual basándose en la zona horaria local del cliente.
+ * Resuelve el bug donde toISOString() adelanta el día por el desfase UTC.
+ * @returns {string} Fecha en formato 'YYYY-MM-DD'
+ */
+const obtenerFechaHoy = () => {
+  const ahora = new Date();
+  const anio = ahora.getFullYear();
+  const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+  const dia = String(ahora.getDate()).padStart(2, '0');
+  return `${anio}-${mes}-${dia}`;
+};
+
+const HOY_STR = obtenerFechaHoy();
+
+// ==========================================
+// 3. ESTADO REACTIVO (Variables)
+// ==========================================
+
+// Identidad y Permisos
 const currentUserId = ref(null);
 const isSuperUser = ref(false);
 const nombreUsuarioLogueado = ref('Cargando usuario...'); 
 
+// Formulario de Reserva
 const nuevaReserva = ref({
   actividad: null,      
   edificio: null,        
@@ -69,182 +55,72 @@ const nuevaReserva = ref({
   sala: null,
   tema: '', 
   requerimientos: '',    
-  fecha: new Date().toISOString().split('T')[0],
+  fecha: HOY_STR,
   inicio: '',
   fin: ''    
 });
 
+// Catálogos
 const maestros = ref([]);
 const asignaturas = ref([]);
 const salas = ref([]);
+const edificios = ref([]);
+const actividades = ref([]);
 const reservasExistentes = ref([]);
 
+// Estado de la Interfaz
 const cargando = ref(false);
 const enviando = ref(false);
 const error = ref(null);
 const mensajeExito = ref(null);
-const edificios = ref([]);
-const actividades = ref([]);
 
-function obtenerIdDesdeToken() {
-    const token = localStorage.getItem('access') || localStorage.getItem('token');
-    if (!token) return null;
-    try {
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-        return JSON.parse(jsonPayload).user_id;
-    } catch (e) {
-        return null;
-    }
-}
+// ==========================================
+// 4. PROPIEDADES COMPUTADAS
+// ==========================================
 
-async function cargarIdentidad() {
-    let uid = localStorage.getItem('user_id');
-    let isSuper = localStorage.getItem('is_superuser');
-
-    if (!uid) uid = obtenerIdDesdeToken();
-
-    currentUserId.value = uid;
-    isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
-}
-
-function tengoPermisoBorrar(reserva) {
-    if (isSuperUser.value) return true;
-    if (!currentUserId.value || !reserva.creadoPor) return false;
-    return String(currentUserId.value) === String(reserva.creadoPor);
-}
-
-async function cargarDatos() {
-    cargando.value = true;
-    error.value = null;
-
-    await cargarIdentidad();
-
-    try {
-       
-
-        const [resMaestros, resAsignaturas, resSalas, resReservas, resEdificios, resActividades] = await Promise.all([
-            ApiService.obtenerMaestros(),
-            ApiService.obtenerAsignaturas(),
-            ApiService.obtenerSalas(),
-            ApiService.obtenerReservas(), 
-            ApiService.obtenerEdificios(),  
-            ApiService.obtenerActividades() 
-        ]);
-
-        maestros.value = resMaestros.data || resMaestros;
-        asignaturas.value = resAsignaturas.data || resAsignaturas;
-        salas.value = resSalas.data || resSalas;
-        edificios.value = resEdificios.data || resEdificios;
-        actividades.value = resActividades.data || resActividades;
-        
-        const dataReservas = resReservas.data || resReservas;
-        
-        if (!isSuperUser.value && currentUserId.value) {
-            const maestroEncontrado = maestros.value.find(m => {
-                let uId = m.usuario_id || m.usuario;
-                if (typeof uId === 'object' && uId !== null) {
-                    uId = uId.id;
-                }
-                return String(uId) === String(currentUserId.value);
-            });
-
-            if (maestroEncontrado) {
-                console.log("Maestro identificado:", maestroEncontrado.nombre);
-                nuevaReserva.value.maestro = maestroEncontrado.id || maestroEncontrado.matricula_m;
-                nombreUsuarioLogueado.value = `${maestroEncontrado.nombre} ${maestroEncontrado.apellido_p}`;
-            } else {
-                nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro";
-                console.warn(`No se encontró un maestro vinculado al usuario ID: ${currentUserId.value}`);
-            }
-        } else if (isSuperUser.value) {
-            nombreUsuarioLogueado.value = "Administrador";
-        }
-        
-        reservasExistentes.value = dataReservas.map(r => {
-            let sId = null;
-            let sNombre = 'Sala';
+/**
+ * Filtro de 1er Nivel: Devuelve únicamente las salas que pertenecen 
+ * al edificio previamente seleccionado en el formulario.
+ */
+const salasFiltradas = computed(() => {
+    if (!nuevaReserva.value.edificio) return [];
+    return salas.value.filter(s => {
+        const edificioSala = typeof s.edificio === 'object' && s.edificio !== null 
+            ? (s.edificio.nombre_edificio || s.edificio.nombre) 
+            : s.edificio;
             
-            if (r.sala && typeof r.sala === 'object') {
-                sId = r.sala.id || r.sala.clave_sala;
-                sNombre = r.sala.nombre_sala || r.sala.nombre;
-            } else {
-                sNombre = String(r.sala);
-                const match = salas.value.find(s => (s.nombre_sala || s.nombre) === sNombre);
-                if (match) sId = match.id || match.clave_sala;
-            }
-
-            // CORRECCIÓN: Función que obliga a leer la fecha en la zona horaria local de México
-            const extraerFechaLocal = (isoString) => {
-                if (!isoString) return '';
-                const f = new Date(isoString);
-                const anio = f.getFullYear();
-                const mes = String(f.getMonth() + 1).padStart(2, '0');
-                const dia = String(f.getDate()).padStart(2, '0');
-                return `${anio}-${mes}-${dia}`;
-            };
-
-            return {
-                id: r.id,
-                salaId: sId,
-                salaNombre: sNombre,
-                edificio: typeof r.edificio === 'object' && r.edificio !== null ? (r.edificio.nombre_edificio || r.edificio.nombre) : (r.edificio || 'Sin Edificio'),
-                actividad: r.actividad || 'Sin Actividad',
-                detalleActividad: (() => {
-                    if (r.asignatura && r.tema) {
-                        return `${r.asignatura} — Tema: ${r.tema}`;
-                    } else if (r.asignatura) {
-                        return r.asignatura;
-                    } else if (r.tema) {
-                        return r.tema;
-                    }
-                    return 'Sin tema';
-                })(),
-                
-                requerimientos: r.requerimientos || null,
-                maestro: r.maestro_nombre || r.maestro,
-                inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
-                finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
-                
-                // REEMPLAZAMOS EL 'SPLIT' POR NUESTRA FUNCIÓN SEGURA
-                fecha: extraerFechaLocal(r.inicio), 
-                
-                creadoPor: r.creado_por_id 
-            };
-        });
-
-    } catch (e) {
-        console.error(e);
-        error.value = "Error al cargar datos del servidor.";
-    } finally {
-        cargando.value = false;
-    }
-}
-
-const minFecha = computed(() => new Date().toISOString().split('T')[0]);
-
-const obtenerOcupacionesSala = () => {
-    if (!nuevaReserva.value.sala || !nuevaReserva.value.fecha) return [];
-    
-    const salaObj = salas.value.find(s => String(s.id || s.clave_sala) === String(nuevaReserva.value.sala));
-    const nombreObj = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
-
-    return reservasExistentes.value.filter(r => {
-        const mismaSala = (String(r.salaId) === String(nuevaReserva.value.sala)) || (r.salaNombre === nombreObj);
-        return mismaSala && r.fecha === nuevaReserva.value.fecha;
+        return String(edificioSala) === String(nuevaReserva.value.edificio);
     });
-};
+});
 
+/**
+ * Determina si la actividad seleccionada requiere forzosamente 
+ * vincularse a una asignatura académica.
+ */
+const esClase = computed(() => {
+    if (!nuevaReserva.value.actividad) return false;
+    const act = actividades.value.find(a => a.id === nuevaReserva.value.actividad);
+    return act && act.nombre_actividad === 'Asignatura';
+});
+
+/**
+ * Calcula dinámicamente las horas de inicio disponibles.
+ * Filtra horas pasadas si la reserva es para HOY, y elimina horas 
+ * que chocan con reservas existentes en la sala seleccionada.
+ */
 const opcionesInicio = computed(() => {
     let horas = [];
-    for(let i=HORARIO_APERTURA; i<HORARIO_CIERRE; i++) {
+    for(let i = HORARIO_APERTURA; i < HORARIO_CIERRE; i++) {
         horas.push(`${String(i).padStart(2,'0')}:00`);
     }
-    if (nuevaReserva.value.fecha === minFecha.value) {
+    
+    // Regla 1: Si es HOY, no permitir apartar horas que ya pasaron
+    if (nuevaReserva.value.fecha === HOY_STR) {
         const horaActual = new Date().getHours();
         horas = horas.filter(h => parseInt(h.split(':')[0]) > horaActual);
     }
+    
+    // Regla 2: Excluir horas que cruzan con ocupaciones existentes
     if (nuevaReserva.value.sala) {
         const ocupaciones = obtenerOcupacionesSala();
         horas = horas.filter(h => {
@@ -254,11 +130,15 @@ const opcionesInicio = computed(() => {
     return horas;
 });
 
+/**
+ * Calcula las horas de finalización válidas, garantizando que el fin 
+ * sea posterior al inicio, y evitando que una reserva "atraviese" otra.
+ */
 const opcionesFin = computed(() => {
     if(!nuevaReserva.value.inicio) return [];
     
     let horas = [];
-    for(let i=HORARIO_APERTURA + 1; i<=HORARIO_CIERRE; i++) {
+    for(let i = HORARIO_APERTURA + 1; i <= HORARIO_CIERRE; i++) {
         horas.push(`${String(i).padStart(2,'0')}:00`);
     }
     horas = horas.filter(h => h > nuevaReserva.value.inicio);
@@ -269,6 +149,7 @@ const opcionesFin = computed(() => {
             .filter(r => r.inicioFmt >= nuevaReserva.value.inicio)
             .sort((a, b) => a.inicioFmt.localeCompare(b.inicioFmt));
 
+        // Si hay una reserva más tarde, la hora de fin no puede pasar el inicio de esa
         if (reservasFuturas.length > 0) {
             const siguienteInicio = reservasFuturas[0].inicioFmt;
             horas = horas.filter(h => h <= siguienteInicio);
@@ -277,12 +158,14 @@ const opcionesFin = computed(() => {
     return horas;
 });
 
-// 2. CORRECCIÓN: Grid de estado de salas adaptado para llaves naturales tipo String
+/**
+ * Mapea las salas del edificio seleccionado y calcula su estado (Libre/Ocupada/Llena)
+ * cruzando los datos del catálogo de salas con el array de reservas activas.
+ */
 const estadoSalas = computed(() => {
     const dia = nuevaReserva.value.fecha;
     if (!dia || !nuevaReserva.value.edificio) return [];
 
-    // Filtramos las salas comparando el nombre del edificio de manera segura
     const salasAMostrar = salas.value.filter(s => {
         const edificioSala = typeof s.edificio === 'object' && s.edificio !== null 
             ? (s.edificio.nombre_edificio || s.edificio.nombre) 
@@ -326,41 +209,179 @@ const estadoSalas = computed(() => {
     });
 });
 
+// ==========================================
+// 5. FUNCIONES Y MÉTODOS
+// ==========================================
+
+function limpiarAsignaturaSiEsEvento() {
+    if (!esClase.value) nuevaReserva.value.asignatura = null;
+}
+
+function seleccionar(id) { 
+    nuevaReserva.value.sala = id; 
+}
+
+function obtenerIdDesdeToken() {
+    const token = localStorage.getItem('access') || localStorage.getItem('token');
+    if (!token) return null;
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        return JSON.parse(jsonPayload).user_id;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function cargarIdentidad() {
+    let uid = localStorage.getItem('user_id');
+    let isSuper = localStorage.getItem('is_superuser');
+
+    if (!uid) uid = obtenerIdDesdeToken();
+
+    currentUserId.value = uid;
+    isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
+}
+
+/**
+ * Valida si el usuario en sesión tiene autoridad para eliminar una reserva.
+ * Regla: Un Admin puede borrar todo; un Docente solo puede borrar lo suyo.
+ */
+function tengoPermisoBorrar(reserva) {
+    if (isSuperUser.value) return true;
+    if (!currentUserId.value || !reserva.creadoPor) return false;
+    return String(currentUserId.value) === String(reserva.creadoPor);
+}
+
+const obtenerOcupacionesSala = () => {
+    if (!nuevaReserva.value.sala || !nuevaReserva.value.fecha) return [];
+    
+    const salaObj = salas.value.find(s => String(s.id || s.clave_sala) === String(nuevaReserva.value.sala));
+    const nombreObj = salaObj ? (salaObj.nombre_sala || salaObj.nombre) : '';
+
+    return reservasExistentes.value.filter(r => {
+        const mismaSala = (String(r.salaId) === String(nuevaReserva.value.sala)) || (r.salaNombre === nombreObj);
+        return mismaSala && r.fecha === nuevaReserva.value.fecha;
+    });
+};
+
+/**
+ * Descarga todos los catálogos necesarios para armar el formulario,
+ * identifica el perfil del usuario activo y estandariza los datos de fechas.
+ */
+async function cargarDatos() {
+    cargando.value = true;
+    error.value = null;
+
+    await cargarIdentidad();
+
+    try {
+        const [resMaestros, resAsignaturas, resSalas, resReservas, resEdificios, resActividades] = await Promise.all([
+            ApiService.obtenerMaestros(),
+            ApiService.obtenerAsignaturas(),
+            ApiService.obtenerSalas(),
+            ApiService.obtenerReservas(), 
+            ApiService.obtenerEdificios(),  
+            ApiService.obtenerActividades() 
+        ]);
+
+        maestros.value = resMaestros.data || resMaestros;
+        asignaturas.value = resAsignaturas.data || resAsignaturas;
+        salas.value = resSalas.data || resSalas;
+        edificios.value = resEdificios.data || resEdificios;
+        actividades.value = resActividades.data || resActividades;
+        
+        const dataReservas = resReservas.data || resReservas;
+        
+        // Asignación automática del maestro logueado para usuarios estándar
+        if (!isSuperUser.value && currentUserId.value) {
+            const maestroEncontrado = maestros.value.find(m => {
+                let uId = m.usuario_id || m.usuario;
+                if (typeof uId === 'object' && uId !== null) uId = uId.id;
+                return String(uId) === String(currentUserId.value);
+            });
+
+            if (maestroEncontrado) {
+                nuevaReserva.value.maestro = maestroEncontrado.id || maestroEncontrado.matricula_m;
+                nombreUsuarioLogueado.value = `${maestroEncontrado.nombre} ${maestroEncontrado.apellido_p}`;
+            } else {
+                nombreUsuarioLogueado.value = "Usuario sin perfil de Maestro";
+            }
+        } else if (isSuperUser.value) {
+            nombreUsuarioLogueado.value = "Administrador";
+        }
+        
+        const extraerFechaLocal = (isoString) => {
+            if (!isoString) return '';
+            const f = new Date(isoString);
+            const anio = f.getFullYear();
+            const mes = String(f.getMonth() + 1).padStart(2, '0');
+            const dia = String(f.getDate()).padStart(2, '0');
+            return `${anio}-${mes}-${dia}`;
+        };
+
+        reservasExistentes.value = dataReservas.map(r => {
+            let sId = null;
+            let sNombre = 'Sala';
+            
+            if (r.sala && typeof r.sala === 'object') {
+                sId = r.sala.id || r.sala.clave_sala;
+                sNombre = r.sala.nombre_sala || r.sala.nombre;
+            } else {
+                sNombre = String(r.sala);
+                const match = salas.value.find(s => (s.nombre_sala || s.nombre) === sNombre);
+                if (match) sId = match.id || match.clave_sala;
+            }
+
+            return {
+                id: r.id,
+                salaId: sId,
+                salaNombre: sNombre,
+                edificio: typeof r.edificio === 'object' && r.edificio !== null ? (r.edificio.nombre_edificio || r.edificio.nombre) : (r.edificio || 'Sin Edificio'),
+                actividad: r.actividad || 'Sin Actividad',
+                detalleActividad: (() => {
+                    if (r.asignatura && r.tema) return `${r.asignatura} — Tema: ${r.tema}`;
+                    if (r.asignatura) return r.asignatura;
+                    if (r.tema) return r.tema;
+                    return 'Sin tema';
+                })(),
+                requerimientos: r.requerimientos || null,
+                maestro: r.maestro_nombre || r.maestro,
+                inicioFmt: r.inicio ? new Date(r.inicio).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
+                finFmt: r.fin ? new Date(r.fin).toLocaleTimeString('es-MX', {hour: '2-digit', minute:'2-digit', hour12: false}) : '',
+                fecha: extraerFechaLocal(r.inicio), 
+                creadoPor: r.creado_por_id 
+            };
+        });
+
+    } catch (e) {
+        console.error("Error al cargar datos", e);
+        error.value = "Error al sincronizar con el servidor.";
+    } finally {
+        cargando.value = false;
+    }
+}
+
+/**
+ * Valida todos los campos, estructura el Payload (JSON) y lo 
+ * envía al backend para consolidar la reserva.
+ */
 async function crearReserva() {
     error.value = null;
     mensajeExito.value = null;
-    console.log("Intentando crear reserva...", nuevaReserva.value);
 
     const f = nuevaReserva.value;
     const esInvalido = (v) => v === null || v === undefined || v === '';
 
-    if (esInvalido(f.fecha)) { 
-        error.value = "La FECHA es obligatoria."; window.scrollTo(0,0); return; 
-    }
-    if (esInvalido(f.actividad)) { 
-        error.value = "Debes seleccionar una ACTIVIDAD."; window.scrollTo(0,0); return; 
-    }
-    if (isSuperUser.value && esInvalido(f.maestro)) { 
-        error.value = "Debes seleccionar un MAESTRO."; window.scrollTo(0,0); return; 
-    }
-    if (esInvalido(f.sala)) { 
-        error.value = "Debes seleccionar una SALA."; window.scrollTo(0,0); return; 
-    }
-
-    const actividadSeleccionada = actividades.value.find(a => a.id === f.actividad);
-    const esClase = actividadSeleccionada && actividadSeleccionada.nombre_actividad === 'Asignatura';
-
-    if (esClase && esInvalido(f.asignatura)) { 
-        error.value = "Para esta actividad, debes seleccionar una ASIGNATURA."; 
-        window.scrollTo(0,0); return; 
-    }
-
-    if (esInvalido(f.inicio)) { 
-        error.value = "La hora de INICIO es obligatoria."; window.scrollTo(0,0); return; 
-    }
-    if (esInvalido(f.fin)) { 
-        error.value = "La hora de FIN es obligatoria."; window.scrollTo(0,0); return; 
-    }
+    // Validaciones de UI
+    if (esInvalido(f.fecha)) { error.value = "La FECHA es obligatoria."; window.scrollTo(0,0); return; }
+    if (esInvalido(f.actividad)) { error.value = "Debes seleccionar una ACTIVIDAD."; window.scrollTo(0,0); return; }
+    if (isSuperUser.value && esInvalido(f.maestro)) { error.value = "Debes seleccionar un MAESTRO."; window.scrollTo(0,0); return; }
+    if (esInvalido(f.sala)) { error.value = "Debes seleccionar una SALA."; window.scrollTo(0,0); return; }
+    if (esClase.value && esInvalido(f.asignatura)) { error.value = "Para esta actividad, debes seleccionar una ASIGNATURA."; window.scrollTo(0,0); return; }
+    if (esInvalido(f.inicio)) { error.value = "La hora de INICIO es obligatoria."; window.scrollTo(0,0); return; }
+    if (esInvalido(f.fin)) { error.value = "La hora de FIN es obligatoria."; window.scrollTo(0,0); return; }
     
     enviando.value = true;
     try {
@@ -370,7 +391,7 @@ async function crearReserva() {
         const payload = {
             actividad: f.actividad,
             maestro: f.maestro,
-            asignatura: esClase ? f.asignatura : null, 
+            asignatura: esClase.value ? f.asignatura : null, 
             sala: f.sala,
             tema: temaLimpio,
             requerimientos: reqLimpios,
@@ -383,6 +404,7 @@ async function crearReserva() {
         mensajeExito.value = "¡Reserva creada con éxito!";
         window.scrollTo(0,0);
         
+        // Limpieza parcial para facilitar reservas consecutivas
         nuevaReserva.value.inicio = ''; 
         nuevaReserva.value.fin = '';
         nuevaReserva.value.tema = ''; 
@@ -391,34 +413,33 @@ async function crearReserva() {
         
         await cargarDatos();
     } catch(e) {
-        console.error("Error completo en crearReserva:", e);
         window.scrollTo(0,0); 
-        
         if (e.response && e.response.data) {
             const data = e.response.data;
-            if (data.detail) {
-                error.value = data.detail;
-            } else if (data.non_field_errors) {
-                error.value = data.non_field_errors[0];
-            } else {
+            if (data.detail) error.value = data.detail;
+            else if (data.non_field_errors) error.value = data.non_field_errors[0];
+            else {
                 const primerCampo = Object.keys(data)[0];
                 const mensaje = Array.isArray(data[primerCampo]) ? data[primerCampo][0] : data[primerCampo];
                 error.value = `${primerCampo.toUpperCase()}: ${mensaje}`;
             }
         } else {
-            error.value = "Error de conexión o servidor no responde (Revise consola).";
+            error.value = "Error de conexión o servidor no responde.";
         }
     } finally {
         enviando.value = false;
     }
 }
 
+/**
+ * Emite una solicitud DELETE al backend para liberar una sala.
+ */
 async function cancelar(id, horarioDesc) {
     if(!confirm(`¿Estás seguro de cancelar la reserva de ${horarioDesc}?`)) return;
     
     try {
         await ApiService.eliminarReserva(id);
-        mensajeExito.value = "Reserva eliminada";
+        mensajeExito.value = "Reserva eliminada con éxito.";
         await cargarDatos();
     } catch(e) {
         const status = e.response?.status;
@@ -427,209 +448,200 @@ async function cancelar(id, horarioDesc) {
     }
 }
 
-function seleccionar(id) { nuevaReserva.value.sala = id; }
+// ==========================================
+// 6. CICLO DE VIDA (Hooks y Watchers)
+// ==========================================
+
+onMounted(() => {
+    cargarDatos();
+    conectar(); 
+});
 
 watch(() => nuevaReserva.value.fecha, () => {
-    console.log("La fecha cambió a:", nuevaReserva.value.fecha, "re-calculando agenda...");
     cargarDatos();
 });
 </script>
 
 <template>
-  <div class="container-fluid p-4">
+  <div class="container-fluid px-4 py-4">
 
-    <div class="d-flex align-items-center card-header border-0 bg-white mb-3">
-        <h2 class="text-dark mb-0 me-3 fw-bold">
-           <i class="bi bi-calendar-check text-secondary"></i> Reservar Espacio
-        </h2>
+    <HeaderInstitucional 
+        titulo="Reservar Espacio" 
+        subtitulo="Programa actividades y asigna recursos físicos a las asignaturas."
+        icono="bi-calendar-plus"
+    />
+
+    <div v-if="error" class="alert alert-danger shadow-sm border-0 d-flex align-items-center rounded-3">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
     </div>
-    
-    <div v-if="servicioCerrado" class="text-center py-5 mt-4 bg-white rounded shadow-sm border border-warning">
-       <div class="py-5">
-            <i class="bi bi-clock-history text-warning display-1"></i>
-            <h2 class="mt-4 fw-bold text-dark">Servicio Cerrado</h2>
-            <p class="text-muted fs-5">
-                El sistema de reservas y consulta solo está disponible en horario laboral.
-            </p>
-            <div class="d-inline-block bg-light px-4 py-2 rounded-pill border mt-2">
-                <span class="fw-bold text-primary">Horario de Atención:</span> 08:00 AM - 04:00 PM
-            </div>
-        </div>
+    <div v-if="mensajeExito" class="alert alert-success shadow-sm border-0 d-flex align-items-center rounded-3">
+        <i class="bi bi-check-circle-fill me-2"></i> {{ mensajeExito }}
     </div>
 
-    <div v-else>
-        <div v-if="error" class="alert alert-danger shadow-sm border-0 d-flex align-items-center">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ error }}
-        </div>
-        <div v-if="mensajeExito" class="alert alert-success shadow-sm border-0 d-flex align-items-center">
-            <i class="bi bi-check-circle-fill me-2"></i> {{ mensajeExito }}
-        </div>
-
-        <div class="row">
-            <div class="col-lg-4 mb-4">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-body">
-                        <form @submit.prevent="crearReserva">
-                            
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">FECHA</label>
-                                <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="minFecha" @change="cargarDatos" required>
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 h-100 rounded-3">
+                <div class="card-body p-4">
+                    <form @submit.prevent="crearReserva">
+                        
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">FECHA</label>
+                            <input type="date" class="form-control" v-model="nuevaReserva.fecha" :min="HOY_STR" @change="cargarDatos" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">MAESTRO</label>
+                            <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
+                                <option :value="null">Seleccionar...</option>
+                                <option v-for="m in maestros" :key="m.id" :value="m.id || m.matricula_m">
+                                    {{ m.nombre }} {{ m.apellido_p }}
+                                </option>
+                            </select>
+                            <div v-else class="input-group">
+                                <span class="input-group-text bg-light border-light text-primary"><i class="bi bi-person-fill"></i></span>
+                                <input type="text" class="form-control bg-light border-light" :value="nombreUsuarioLogueado" disabled readonly>
                             </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">MAESTRO</label>
-                                <select v-if="isSuperUser" class="form-select" v-model="nuevaReserva.maestro">
-                                    <option :value="null">Seleccionar...</option>
-                                    <option v-for="m in maestros" :key="m.id" :value="m.id || m.matricula_m">
-                                        {{ m.nombre }} {{ m.apellido_p }}
-                                    </option>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">ACTIVIDAD</label>
+                            <select class="form-select" v-model="nuevaReserva.actividad" @change="limpiarAsignaturaSiEsEvento">
+                                <option :value="null">Seleccionar...</option>
+                                <option v-for="act in actividades" :key="act.id" :value="act.id">{{ act.nombre_actividad }}</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">ASIGNATURA</label>
+                            <select class="form-select" v-model="nuevaReserva.asignatura" :disabled="!esClase" :class="{'bg-light text-muted': !esClase}">
+                                <option :value="null">{{ esClase ? 'Seleccionar...' : 'No aplica para esta actividad' }}</option>
+                                <option v-for="a in asignaturas" :key="a.id" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">EDIFICIO</label>
+                            <select class="form-select" v-model="nuevaReserva.edificio" @change="nuevaReserva.sala = null">
+                                <option :value="null">Seleccionar...</option>
+                                <option v-for="ed in edificios" :key="ed.nombre_edificio" :value="ed.nombre_edificio">{{ ed.nombre_edificio }}</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">SALA</label>
+                            <select class="form-select" v-model="nuevaReserva.sala" :disabled="!nuevaReserva.edificio" :class="{'bg-light text-muted': !nuevaReserva.edificio}">
+                                <option :value="null">{{ nuevaReserva.edificio ? 'Seleccionar...' : 'Primero elige un edificio' }}</option>
+                                <option v-for="s in salasFiltradas" :key="s.clave_sala" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Nombre de la actividad <span class="fw-light">(Opc)</span></label>
+                            <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">REQUERIMIENTOS ESPECIALES <span class="fw-light">(Opc)</span></label>
+                            <textarea class="form-control" v-model="nuevaReserva.requerimientos" rows="2" placeholder="Ej. Proyector, micrófonos..."></textarea>
+                        </div>
+
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold text-muted">INICIO</label>
+                                <select class="form-select" v-model="nuevaReserva.inicio">
+                                    <option v-for="h in opcionesInicio" :key="h" :value="h">{{ h }}</option>
                                 </select>
-                                <div v-else class="input-group">
-                                    <span class="input-group-text bg-light text-primary"><i class="bi bi-person-fill"></i></span>
-                                    <input type="text" class="form-control bg-light" :value="nombreUsuarioLogueado" disabled readonly>
-                                </div>
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">ACTIVIDAD</label>
-                                <select class="form-select" v-model="nuevaReserva.actividad" @change="limpiarAsignaturaSiEsEvento">
-                                    <option :value="null">Seleccionar...</option>
-                                    <option v-for="act in actividades" :key="act.id" :value="act.id">{{ act.nombre_actividad }}</option>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold text-muted">FIN</label>
+                                <select class="form-select" v-model="nuevaReserva.fin">
+                                    <option v-for="h in opcionesFin" :key="h" :value="h">{{ h }}</option>
                                 </select>
                             </div>
+                        </div>
 
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">ASIGNATURA</label>
-                                <select class="form-select" v-model="nuevaReserva.asignatura" :disabled="!esClase" :class="{'bg-light text-muted': !esClase}">
-                                    <option :value="null">{{ esClase ? 'Seleccionar...' : 'No aplica para esta actividad' }}</option>
-                                    <option v-for="a in asignaturas" :key="a.id" :value="a.id || a.clave_asignatura">{{ a.nombre_asignatura }}</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">EDIFICIO</label>
-                                <select class="form-select" v-model="nuevaReserva.edificio" @change="nuevaReserva.sala = null">
-                                    <option :value="null">Seleccionar...</option>
-                                    <option v-for="ed in edificios" :key="ed.nombre_edificio" :value="ed.nombre_edificio">{{ ed.nombre_edificio }}</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">SALA</label>
-                                <select class="form-select" v-model="nuevaReserva.sala" :disabled="!nuevaReserva.edificio" :class="{'bg-light text-muted': !nuevaReserva.edificio}">
-                                    <option :value="null">{{ nuevaReserva.edificio ? 'Seleccionar...' : 'Primero elige un edificio' }}</option>
-                                    <option v-for="s in salasFiltradas" :key="s.clave_sala" :value="s.id || s.clave_sala">{{ s.nombre_sala }}</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">Nombre de la actividad <span class="fw-light">(Opc)</span></label>
-                                <input type="text" class="form-control" v-model="nuevaReserva.tema" placeholder="">
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold text-muted">REQUERIMIENTOS ESPECIALES <span class="fw-light">(Opc)</span></label>
-                                <textarea class="form-control" v-model="nuevaReserva.requerimientos" rows="2" placeholder="Ej. Proyector, micrófonos..."></textarea>
-                            </div>
-
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <label class="form-label small fw-bold text-muted">INICIO</label>
-                                    <select class="form-select" v-model="nuevaReserva.inicio">
-                                        <option v-for="h in opcionesInicio" :key="h" :value="h">{{ h }}</option>
-                                    </select>
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small fw-bold text-muted">FIN</label>
-                                    <select class="form-select" v-model="nuevaReserva.fin">
-                                        <option v-for="h in opcionesFin" :key="h" :value="h">{{ h }}</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <button class="btn btn-primary w-100 mt-4 py-2 fw-bold" :disabled="enviando">
-                                <span v-if="enviando" class="spinner-border spinner-border-sm me-2"></span>
-                                {{ enviando ? 'Reservando...' : 'Confirmar Reserva' }}
-                            </button>
-                        </form>
-                    </div>
+                        <button class="btn btn-primary w-100 mt-4 py-2 fw-bold shadow-sm" :disabled="enviando">
+                            <span v-if="enviando" class="spinner-border spinner-border-sm me-2"></span>
+                            {{ enviando ? 'Reservando...' : 'Confirmar Reserva' }}
+                        </button>
+                    </form>
                 </div>
             </div>
+        </div>
 
-            <div class="col-lg-8">
-                <div v-if="!nuevaReserva.edificio" class="d-flex flex-column align-items-center justify-content-center h-100 bg-white rounded shadow-sm border border-dashed border-secondary p-5 text-muted">
-                    <i class="bi bi-building fs-1 mb-3 opacity-50"></i>
-                    <h5 class="fw-bold text-dark">Selecciona un Edificio</h5>
-                    <p class="small text-center max-w-75">El mapa de ocupación de las salas aparecerá aquí una vez que elijas una ubicación en el formulario de la izquierda.</p>
-                </div>
-                
-                <div v-else class="row g-3">
-                    <div v-for="sala in estadoSalas" :key="sala.id" class="col-md-6">
-                        <div class="card h-100 shadow-sm border border-light" :class="{'bg-light': !sala.ocupado}">
-                            <div class="card-body d-flex flex-column">
-                                
-                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                    <div>
-                                        <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
-                                    </div>
-                                    <span class="badge border" 
-                                          :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
-                                        {{ sala.agotada ? 'LLENA' : (sala.ocupado ? 'OCUPADA' : 'LIBRE') }}
-                                    </span>
+        <div class="col-lg-8">
+            <div v-if="!nuevaReserva.edificio" class="d-flex flex-column align-items-center justify-content-center h-100 bg-white rounded-3 shadow-sm border border-dashed border-secondary p-5 text-muted">
+                <i class="bi bi-building fs-1 mb-3 opacity-50"></i>
+                <h5 class="fw-bold text-dark">Selecciona un Edificio</h5>
+                <p class="small text-center max-w-75">El mapa de ocupación de las salas aparecerá aquí una vez que elijas una ubicación en el formulario de la izquierda.</p>
+            </div>
+            
+            <div v-else class="row g-3">
+                <div v-for="sala in estadoSalas" :key="sala.id" class="col-md-6">
+                    <div class="card h-100 shadow-sm border-0 rounded-3" :class="{'bg-light': !sala.ocupado}">
+                        <div class="card-body d-flex flex-column p-4">
+                            
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-dark">{{ sala.nombre }}</h6>
                                 </div>
-
-                                <div class="flex-grow-1 mb-3">
-                                    <div v-if="!sala.ocupado" class="text-center text-muted py-3 small">
-                                        <i class="bi bi-check2-circle d-block fs-4 mb-1 text-success opacity-50"></i>
-                                        Disponible todo el día
-                                    </div>
-                                    <ul v-else class="list-group list-group-flush small">
-                                        <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-2 d-flex flex-column border-bottom border-light">
-                                            
-                                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                                <div class="fw-semibold text-dark">
-                                                    <i class="bi bi-clock me-1 text-muted"></i> {{ res.inicioFmt }} - {{ res.finFmt }}
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="text-secondary" style="font-size: 0.9em;">
-                                                <div class="fw-bold text-dark">{{ res.maestro }}</div>
-                                                <div>
-                                                    <span class="badge bg-secondary text-white me-1">{{ res.actividad }}</span> 
-                                                    <span class="fst-italic">{{ res.detalleActividad }}</span>
-                                                </div>
-                                            </div>
-
-                                            <div v-if="isSuperUser && res.requerimientos" class="mt-2 p-2 bg-warning-subtle border border-warning rounded" style="font-size: 0.85em;">
-                                                <span class="fw-bold text-dark-emphasis"><i class="bi bi-tools me-1"></i>Requerimientos:</span> 
-                                                <span class="text-dark">{{ res.requerimientos }}</span>
-                                            </div>
-
-                                        </li>
-                                    </ul>
-                                </div>
-
-                                <div class="d-flex gap-2 mt-auto pt-2 border-top border-light">
-                                    <button 
-                                        v-if="sala.idCancelable"
-                                        @click="cancelar(sala.idCancelable, sala.descCancelable)"
-                                        class="btn btn-sm btn-outline-danger flex-grow-1"
-                                        title="Cancelar reserva"
-                                    >
-                                        <i class="bi bi-trash me-1"></i> Cancelar
-                                    </button>
-
-                                    <button 
-                                        @click="seleccionar(sala.id)"
-                                        class="btn btn-sm btn-outline-primary"
-                                        :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
-                                        :disabled="sala.agotada"
-                                    >
-                                        Usar Sala
-                                    </button>
-                                </div>
-
+                                <span class="badge border" 
+                                      :class="sala.agotada ? 'text-danger border-danger bg-danger-subtle' : (sala.ocupado ? 'text-warning border-warning bg-warning-subtle text-dark-emphasis' : 'text-success border-success bg-success-subtle')">
+                                    {{ sala.agotada ? 'LLENA' : (sala.ocupado ? 'OCUPADA' : 'LIBRE') }}
+                                </span>
                             </div>
+
+                            <div class="flex-grow-1 mb-3">
+                                <div v-if="!sala.ocupado" class="text-center text-muted py-3 small">
+                                    <i class="bi bi-check2-circle d-block fs-4 mb-1 text-success opacity-50"></i>
+                                    Disponible todo el día
+                                </div>
+                                <ul v-else class="list-group list-group-flush small">
+                                    <li v-for="res in sala.reservas" :key="res.id" class="list-group-item bg-transparent px-0 py-2 d-flex flex-column border-bottom border-light">
+                                        
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <div class="fw-semibold text-dark">
+                                                <i class="bi bi-clock me-1 text-muted"></i> {{ res.inicioFmt }} - {{ res.finFmt }}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="text-secondary" style="font-size: 0.9em;">
+                                            <div class="fw-bold text-dark">{{ res.maestro }}</div>
+                                            <div>
+                                                <span class="badge bg-secondary text-white me-1">{{ res.actividad }}</span> 
+                                                <span class="fst-italic">{{ res.detalleActividad }}</span>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="isSuperUser && res.requerimientos" class="mt-2 p-2 bg-warning-subtle border border-warning rounded" style="font-size: 0.85em;">
+                                            <span class="fw-bold text-dark-emphasis"><i class="bi bi-tools me-1"></i>Req:</span> 
+                                            <span class="text-dark">{{ res.requerimientos }}</span>
+                                        </div>
+
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2 mt-auto pt-3 border-top border-light">
+                                <button 
+                                    v-if="sala.idCancelable"
+                                    @click="cancelar(sala.idCancelable, sala.descCancelable)"
+                                    class="btn btn-sm btn-outline-danger flex-grow-1 fw-semibold shadow-sm"
+                                    title="Cancelar reserva"
+                                >
+                                    <i class="bi bi-trash me-1"></i> Cancelar
+                                </button>
+
+                                <button 
+                                    @click="seleccionar(sala.id)"
+                                    class="btn btn-sm btn-outline-primary fw-semibold shadow-sm"
+                                    :class="sala.idCancelable ? 'flex-grow-0' : 'flex-grow-1'"
+                                    :disabled="sala.agotada"
+                                >
+                                    Usar Sala
+                                </button>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -641,6 +653,6 @@ watch(() => nuevaReserva.value.fecha, () => {
 
 <style scoped>
 .btn-sm { font-size: 0.85rem; }
-.border-dashed { border-style: dashed !important; }
+.border-dashed { border-style: dashed !important; border-width: 2px !important; }
 .max-w-75 { max-width: 75%; }
 </style>
