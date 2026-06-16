@@ -25,7 +25,6 @@ const HORARIO_CIERRE = 16;
 /**
  * Calcula la fecha actual basándose en la zona horaria local del cliente.
  * Resuelve el bug donde toISOString() adelanta el día por el desfase UTC.
- * @returns {string} Fecha en formato 'YYYY-MM-DD'
  */
 const obtenerFechaHoy = () => {
   const ahora = new Date();
@@ -41,12 +40,10 @@ const HOY_STR = obtenerFechaHoy();
 // 3. ESTADO REACTIVO (Variables)
 // ==========================================
 
-// Identidad y Permisos
 const currentUserId = ref(null);
 const isSuperUser = ref(false);
 const nombreUsuarioLogueado = ref('Cargando usuario...'); 
 
-// Formulario de Reserva
 const nuevaReserva = ref({
   actividad: null,      
   edificio: null,        
@@ -60,7 +57,6 @@ const nuevaReserva = ref({
   fin: ''    
 });
 
-// Catálogos
 const maestros = ref([]);
 const asignaturas = ref([]);
 const salas = ref([]);
@@ -68,7 +64,6 @@ const edificios = ref([]);
 const actividades = ref([]);
 const reservasExistentes = ref([]);
 
-// Estado de la Interfaz
 const cargando = ref(false);
 const enviando = ref(false);
 const error = ref(null);
@@ -78,10 +73,6 @@ const mensajeExito = ref(null);
 // 4. PROPIEDADES COMPUTADAS
 // ==========================================
 
-/**
- * Filtro de 1er Nivel: Devuelve únicamente las salas que pertenecen 
- * al edificio previamente seleccionado en el formulario.
- */
 const salasFiltradas = computed(() => {
     if (!nuevaReserva.value.edificio) return [];
     return salas.value.filter(s => {
@@ -93,10 +84,6 @@ const salasFiltradas = computed(() => {
     });
 });
 
-/**
- * Determina si la actividad seleccionada requiere forzosamente 
- * vincularse a una asignatura académica.
- */
 const esClase = computed(() => {
     if (!nuevaReserva.value.actividad) return false;
     const act = actividades.value.find(a => a.id === nuevaReserva.value.actividad);
@@ -104,23 +91,26 @@ const esClase = computed(() => {
 });
 
 /**
- * Calcula dinámicamente las horas de inicio disponibles.
- * Filtra horas pasadas si la reserva es para HOY, y elimina horas 
- * que chocan con reservas existentes en la sala seleccionada.
+ * Detecta si el usuario intentó dejar la fecha de hoy, 
+ * pero el reloj actual ya superó la hora de cierre.
  */
+const horarioVencidoHoy = computed(() => {
+    if (nuevaReserva.value.fecha !== HOY_STR) return false;
+    const horaActual = new Date().getHours();
+    return horaActual >= HORARIO_CIERRE;
+});
+
 const opcionesInicio = computed(() => {
     let horas = [];
     for(let i = HORARIO_APERTURA; i < HORARIO_CIERRE; i++) {
         horas.push(`${String(i).padStart(2,'0')}:00`);
     }
     
-    // Regla 1: Si es HOY, no permitir apartar horas que ya pasaron
     if (nuevaReserva.value.fecha === HOY_STR) {
         const horaActual = new Date().getHours();
         horas = horas.filter(h => parseInt(h.split(':')[0]) > horaActual);
     }
     
-    // Regla 2: Excluir horas que cruzan con ocupaciones existentes
     if (nuevaReserva.value.sala) {
         const ocupaciones = obtenerOcupacionesSala();
         horas = horas.filter(h => {
@@ -130,10 +120,6 @@ const opcionesInicio = computed(() => {
     return horas;
 });
 
-/**
- * Calcula las horas de finalización válidas, garantizando que el fin 
- * sea posterior al inicio, y evitando que una reserva "atraviese" otra.
- */
 const opcionesFin = computed(() => {
     if(!nuevaReserva.value.inicio) return [];
     
@@ -149,7 +135,6 @@ const opcionesFin = computed(() => {
             .filter(r => r.inicioFmt >= nuevaReserva.value.inicio)
             .sort((a, b) => a.inicioFmt.localeCompare(b.inicioFmt));
 
-        // Si hay una reserva más tarde, la hora de fin no puede pasar el inicio de esa
         if (reservasFuturas.length > 0) {
             const siguienteInicio = reservasFuturas[0].inicioFmt;
             horas = horas.filter(h => h <= siguienteInicio);
@@ -158,10 +143,6 @@ const opcionesFin = computed(() => {
     return horas;
 });
 
-/**
- * Mapea las salas del edificio seleccionado y calcula su estado (Libre/Ocupada/Llena)
- * cruzando los datos del catálogo de salas con el array de reservas activas.
- */
 const estadoSalas = computed(() => {
     const dia = nuevaReserva.value.fecha;
     if (!dia || !nuevaReserva.value.edificio) return [];
@@ -244,10 +225,6 @@ async function cargarIdentidad() {
     isSuperUser.value = (String(isSuper).toLowerCase() === 'true' || String(isSuper) === '1');
 }
 
-/**
- * Valida si el usuario en sesión tiene autoridad para eliminar una reserva.
- * Regla: Un Admin puede borrar todo; un Docente solo puede borrar lo suyo.
- */
 function tengoPermisoBorrar(reserva) {
     if (isSuperUser.value) return true;
     if (!currentUserId.value || !reserva.creadoPor) return false;
@@ -266,10 +243,6 @@ const obtenerOcupacionesSala = () => {
     });
 };
 
-/**
- * Descarga todos los catálogos necesarios para armar el formulario,
- * identifica el perfil del usuario activo y estandariza los datos de fechas.
- */
 async function cargarDatos() {
     cargando.value = true;
     error.value = null;
@@ -294,7 +267,6 @@ async function cargarDatos() {
         
         const dataReservas = resReservas.data || resReservas;
         
-        // Asignación automática del maestro logueado para usuarios estándar
         if (!isSuperUser.value && currentUserId.value) {
             const maestroEncontrado = maestros.value.find(m => {
                 let uId = m.usuario_id || m.usuario;
@@ -363,10 +335,6 @@ async function cargarDatos() {
     }
 }
 
-/**
- * Valida todos los campos, estructura el Payload (JSON) y lo 
- * envía al backend para consolidar la reserva.
- */
 async function crearReserva() {
     error.value = null;
     mensajeExito.value = null;
@@ -374,7 +342,6 @@ async function crearReserva() {
     const f = nuevaReserva.value;
     const esInvalido = (v) => v === null || v === undefined || v === '';
 
-    // Validaciones de UI
     if (esInvalido(f.fecha)) { error.value = "La FECHA es obligatoria."; window.scrollTo(0,0); return; }
     if (esInvalido(f.actividad)) { error.value = "Debes seleccionar una ACTIVIDAD."; window.scrollTo(0,0); return; }
     if (isSuperUser.value && esInvalido(f.maestro)) { error.value = "Debes seleccionar un MAESTRO."; window.scrollTo(0,0); return; }
@@ -404,7 +371,6 @@ async function crearReserva() {
         mensajeExito.value = "¡Reserva creada con éxito!";
         window.scrollTo(0,0);
         
-        // Limpieza parcial para facilitar reservas consecutivas
         nuevaReserva.value.inicio = ''; 
         nuevaReserva.value.fin = '';
         nuevaReserva.value.tema = ''; 
@@ -431,9 +397,6 @@ async function crearReserva() {
     }
 }
 
-/**
- * Emite una solicitud DELETE al backend para liberar una sala.
- */
 async function cancelar(id, horarioDesc) {
     if(!confirm(`¿Estás seguro de cancelar la reserva de ${horarioDesc}?`)) return;
     
@@ -545,22 +508,27 @@ watch(() => nuevaReserva.value.fecha, () => {
                             <textarea class="form-control" v-model="nuevaReserva.requerimientos" rows="2" placeholder="Ej. Proyector, micrófonos..."></textarea>
                         </div>
 
+                        <div v-if="horarioVencidoHoy" class="alert alert-warning py-2 small d-flex align-items-center mb-3 shadow-sm border-0">
+                            <i class="bi bi-clock-history me-2 fs-5"></i>
+                            <span>El horario para apartar salas el día de hoy ha concluido. Por favor, elige una fecha futura.</span>
+                        </div>
+
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small fw-bold text-muted">INICIO</label>
-                                <select class="form-select" v-model="nuevaReserva.inicio">
+                                <select class="form-select" v-model="nuevaReserva.inicio" :disabled="horarioVencidoHoy" :class="{'bg-light text-muted': horarioVencidoHoy}">
                                     <option v-for="h in opcionesInicio" :key="h" :value="h">{{ h }}</option>
                                 </select>
                             </div>
                             <div class="col-6">
                                 <label class="form-label small fw-bold text-muted">FIN</label>
-                                <select class="form-select" v-model="nuevaReserva.fin">
+                                <select class="form-select" v-model="nuevaReserva.fin" :disabled="horarioVencidoHoy" :class="{'bg-light text-muted': horarioVencidoHoy}">
                                     <option v-for="h in opcionesFin" :key="h" :value="h">{{ h }}</option>
                                 </select>
                             </div>
                         </div>
 
-                        <button class="btn btn-primary w-100 mt-4 py-2 fw-bold shadow-sm" :disabled="enviando">
+                        <button class="btn btn-primary w-100 mt-4 py-2 fw-bold shadow-sm" :disabled="enviando || horarioVencidoHoy">
                             <span v-if="enviando" class="spinner-border spinner-border-sm me-2"></span>
                             {{ enviando ? 'Reservando...' : 'Confirmar Reserva' }}
                         </button>
