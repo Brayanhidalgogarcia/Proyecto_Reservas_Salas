@@ -46,6 +46,13 @@ export default {
   obtenerUsuario(id) {
     return apiClient.get(`/usuarios/${id}/`);
   },
+
+  actualizarPasswordUsuario(idUsuario, nuevaPassword) {
+    return apiClient.put(`/usuarios/${idUsuario}/actualizar_password/`, {
+      nueva_password: nuevaPassword
+    });
+  },
+  
   crearUsuario(datosUsuario) {
     return apiClient.post('/usuarios/', datosUsuario);
   },
