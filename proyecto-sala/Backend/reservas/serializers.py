@@ -37,11 +37,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
     
 class UsuarioSerializer(serializers.ModelSerializer):
-    division_nombre = serializers.ReadOnlyField(source='division.nombre_division')
-
     class Meta:
         model = Usuario
-        fields = ['id', 'username', 'email', 'nombres', 'apellido_paterno', 'apellido_materno', 'matricula_ud', 'telefono', 'division', 'division_nombre']
+        fields = ['id', 'username', 'email', 'is_superuser']
 
 class EdificioSerializer(serializers.ModelSerializer):
     class Meta:
