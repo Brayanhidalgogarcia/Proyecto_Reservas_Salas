@@ -147,15 +147,15 @@
                                 </td>
                                 <td class="text-center">
                                     <button 
-                                        class="btn btn-sm btn-light border shadow-sm text-primary" 
+                                        class="btn btn-sm btn-outline-primary shadow-sm fw-semibold" 
                                         title="Actualizar Contraseña"
                                         data-bs-toggle="modal" 
                                         data-bs-target="#modalPassword"
                                         @click="prepararEdicionPassword(user)"
                                     >
-                                        <i class="bi bi-shield-lock-fill"></i>
+                                        <i class="bi bi-shield-lock-fill me-1"></i> Cambiar Clave
                                     </button>
-                                </td>
+                                </td>   
                             </tr>
                             <tr v-if="listaUsuarios.length === 0">
                                 <td colspan="5" class="text-center text-muted py-4 small">No hay usuarios registrados en el sistema.</td>
