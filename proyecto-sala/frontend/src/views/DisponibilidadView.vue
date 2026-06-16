@@ -1,65 +1,118 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'; // Añadimos watch
+/**
+ * @file DisponibilidadView.vue
+ * @description Vista principal para la consulta de ocupación de salas.
+ * Permite a los usuarios navegar por fechas y visualizar qué actividades
+ * están programadas. Incluye restricciones de viaje en el tiempo para
+ * usuarios estándar y sincronización en tiempo real vía WebSockets.
+ */
+
+// ==========================================
+// 1. IMPORTS
+// ==========================================
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router'; 
 import SalaCard from '@/components/SalaCard.vue';
 import ApiService from '@/services/ApiService.js';
 import { useWebSocket } from '@/composables/useWebSocket.js';
+import HeaderInstitucional from '@/components/HeaderInstitucional.vue';
 
-let intervaloVigia;
-
+// ==========================================
+// 2. CONFIGURACIÓN Y COMPOSABLES
+// ==========================================
 const router = useRouter(); 
 const { conectar } = useWebSocket(cargarDatos);
 
-onMounted(() => {
-  checkEstadoServicio(); 
-  cargarDatos(); 
-  conectar();
-
-  intervaloVigia = setInterval(() => {
-    checkEstadoServicio();
-  }, 60000);
-});
-
-onUnmounted(() => {
-  clearInterval(intervaloVigia);
-});
-
-const HORA_APERTURA = 8; 
-const HORA_CIERRE = 16;  // Sintonizado a las 16 hrs (04:00 PM) como dice tu cartel
-  
-const reservaciones = ref([]);
-const salas = ref([]); 
-const fechaSeleccionada = ref(new Date().toISOString().slice(0, 10)); 
-
-const cargando = ref(true);
-const error = ref(null);
-const servicioCerrado = ref(false); 
-
-const isSuperUser = ref(false); 
-
-// CORRECCIÓN: El candado de hora solo se activa si el día consultado es HOY
-const checkEstadoServicio = () => {
+/**
+ * Calcula la fecha actual basándose en la zona horaria local del cliente.
+ * Evita el problema del desfase UTC de JavaScript.
+ * @returns {string} Fecha en formato 'YYYY-MM-DD'
+ */
+const obtenerFechaHoy = () => {
   const ahora = new Date();
-  const horaActual = ahora.getHours();
-  
-  // Obtenemos la fecha de hoy en formato local YYYY-MM-DD
   const anio = ahora.getFullYear();
   const mes = String(ahora.getMonth() + 1).padStart(2, '0');
   const dia = String(ahora.getDate()).padStart(2, '0');
-  const hoyStr = `${anio}-${mes}-${dia}`;
-  
-  if (fechaSeleccionada.value === hoyStr && (horaActual < HORA_APERTURA || horaActual >= HORA_CIERRE)) {
-    servicioCerrado.value = true;
-  } else {
-    servicioCerrado.value = false;
-  }
+  return `${anio}-${mes}-${dia}`;
 };
 
-// Monitoreamos la fecha seleccionada para recalcular si se debe abrir o cerrar la vista
-watch(fechaSeleccionada, () => {
-  checkEstadoServicio();
+const HOY_STR = obtenerFechaHoy();
+
+// ==========================================
+// 3. ESTADO REACTIVO (Variables)
+// ==========================================
+const reservaciones = ref([]);
+const salas = ref([]); 
+const fechaSeleccionada = ref(HOY_STR); 
+const cargando = ref(true);
+const error = ref(null);
+const isSuperUser = ref(false); 
+
+// ==========================================
+// 4. PROPIEDADES COMPUTADAS
+// ==========================================
+
+/**
+ * Determina si la fecha que el usuario está viendo en el calendario
+ * es anterior al día de hoy.
+ * @type {ComputedRef<boolean>}
+ */
+const esFechaPasada = computed(() => {
+  return fechaSeleccionada.value < HOY_STR;
 });
 
+/**
+ * Regla de negocio: Deshabilita el botón de retroceso ("Anterior") 
+ * si el usuario es docente y está intentando ver el pasado.
+ * @type {ComputedRef<boolean>}
+ */
+const deshabilitarAnterior = computed(() => {
+  return !isSuperUser.value && fechaSeleccionada.value <= HOY_STR;
+});
+
+/**
+ * Núcleo del renderizado: Cruza el catálogo de salas con el array de reservas.
+ * Agrupa y ordena cronológicamente los eventos pertenecientes a la fecha 
+ * seleccionada para inyectarlos limpiamente en los componentes <SalaCard>.
+ * @type {ComputedRef<Array>}
+ */
+const reservacionesPorSala = computed(() => {
+  return salas.value.map(salaObj => {
+    // 1. Estandarización de nombres de sala y edificio
+    const idSala = salaObj.clave_sala || salaObj.id;
+    const nombreSala = salaObj.nombre_sala || salaObj.nombre || `Sala ${idSala}`;
+    
+    const nombreEdificio = typeof salaObj.edificio === 'object' && salaObj.edificio !== null
+      ? (salaObj.edificio.nombre_edificio || salaObj.edificio.nombre)
+      : (salaObj.edificio || 'Edificio no asignado');
+    
+    // 2. Filtrado de eventos correspondientes a esta sala y a la fecha actual
+    const eventos = reservaciones.value.filter(reserva => {
+        const isSameRoom = String(reserva.sala).trim() === String(nombreSala).trim();
+        const isSameDate = reserva.fecha === fechaSeleccionada.value;
+        return isSameRoom && isSameDate;
+    });
+
+    // 3. Ordenamiento cronológico de los eventos del día
+    eventos.sort((a, b) => new Date(a.inicioRaw) - new Date(b.inicioRaw));
+
+    return {
+        nombre: nombreSala,
+        edificio: nombreEdificio, 
+        capacidad: salaObj.capacidad, 
+        eventos: eventos
+    };
+  });
+});
+
+// ==========================================
+// 5. FUNCIONES Y MÉTODOS
+// ==========================================
+
+/**
+ * Extrae el nivel de privilegios del usuario desde el almacenamiento local
+ * para adaptar los controles de la interfaz (ej. habilitar viaje al pasado).
+ */
 const cargarIdentidad = () => {
   try {
     const isSuper = localStorage.getItem('is_superuser');
@@ -70,6 +123,31 @@ const cargarIdentidad = () => {
   }
 };
 
+/**
+ * Modifica la fecha actual de consulta sumando o restando días.
+ * Maneja internamente los saltos de mes y años bisiestos.
+ * @param {number} dias - Cantidad de días a desplazar (ej. -1 o 1)
+ */
+const cambiarDia = (dias) => {
+  if (dias < 0 && deshabilitarAnterior.value) return; // Protección adicional
+
+  const [anio, mes, dia] = fechaSeleccionada.value.split('-').map(Number);
+  const fecha = new Date(anio, mes - 1, dia);
+  
+  fecha.setDate(fecha.getDate() + dias);
+  
+  const nuevoAnio = fecha.getFullYear();
+  const nuevoMes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const nuevoDia = String(fecha.getDate()).padStart(2, '0');
+  
+  fechaSeleccionada.value = `${nuevoAnio}-${nuevoMes}-${nuevoDia}`;
+};
+
+/**
+ * Función principal de inicialización. Descarga concurrentemente el 
+ * catálogo de salas y las reservaciones activas desde el backend, 
+ * y aplica un formateo exhaustivo de fechas y textos para la UI.
+ */
 async function cargarDatos() {
   if (salas.value.length === 0) cargando.value = true;
   error.value = null; 
@@ -77,6 +155,7 @@ async function cargarDatos() {
   cargarIdentidad();
   
   try {
+    // Peticiones concurrentes para mayor velocidad de carga
     const [resReservas, resSalas] = await Promise.all([
         ApiService.obtenerReservas(),
         ApiService.obtenerSalas()
@@ -87,7 +166,9 @@ async function cargarDatos() {
 
     salas.value = dataSalas;
     
+    // Mapeo exhaustivo para estandarizar la estructura de datos que requiere el frontend
     reservaciones.value = dataReservas.map(item => {
+      
       const formatearHora = (isoString) => {
         if (!isoString) return '--:--';
         const fecha = new Date(isoString);
@@ -100,7 +181,6 @@ async function cargarDatos() {
         const anio = fecha.getFullYear();
         const mes = String(fecha.getMonth() + 1).padStart(2, '0');
         const dia = String(fecha.getDate()).padStart(2, '0');
-        
         return `${anio}-${mes}-${dia}`;
       };
 
@@ -114,17 +194,14 @@ async function cargarDatos() {
         fin: formatearHora(item.fin),
         inicioRaw: item.inicio, 
         actividad: item.actividad || 'Actividad',
+        
+        // Función autoejecutable para construir dinámicamente la descripción de la actividad
         detalleActividad: (() => {
-            if (item.asignatura && item.tema) {
-                return `${item.asignatura} — Tema: ${item.tema}`;
-            } else if (item.asignatura) {
-                return item.asignatura;
-            } else if (item.tema) {
-                return item.tema;
-            }
+            if (item.asignatura && item.tema) return `${item.asignatura} — Tema: ${item.tema}`;
+            if (item.asignatura) return item.asignatura;
+            if (item.tema) return item.tema;
             return 'Sin descripción';
         })(),
-
         
         requerimientos: item.requerimientos || null
       };
@@ -132,6 +209,7 @@ async function cargarDatos() {
 
   } catch (e) {
     console.error("Error fetching data:", e);
+    // Redirección forzada si el token de sesión ha expirado
     if (e.response && e.response.status === 401) {
         router.push('/login');
     } else if (salas.value.length === 0) {
@@ -142,88 +220,52 @@ async function cargarDatos() {
   }
 }
 
-const cambiarDia = (dias) => {
-  const [anio, mes, dia] = fechaSeleccionada.value.split('-').map(Number);
-  const fecha = new Date(anio, mes - 1, dia);
-  
-  fecha.setDate(fecha.getDate() + dias);
-  
-  const nuevoAnio = fecha.getFullYear();
-  const nuevoMes = String(fecha.getMonth() + 1).padStart(2, '0');
-  const nuevoDia = String(fecha.getDate()).padStart(2, '0');
-  
-  fechaSeleccionada.value = `${nuevoAnio}-${nuevoMes}-${nuevoDia}`;
-};
-
-const reservacionesPorSala = computed(() => {
-  return salas.value.map(salaObj => {
-    const idSala = salaObj.clave_sala || salaObj.id;
-    const nombreSala = salaObj.nombre_sala || salaObj.nombre || `Sala ${idSala}`;
-    
-    // CORRECCIÓN: Extracción segura si el edificio viene serializado como objeto relacional
-    const nombreEdificio = typeof salaObj.edificio === 'object' && salaObj.edificio !== null
-      ? (salaObj.edificio.nombre_edificio || salaObj.edificio.nombre)
-      : (salaObj.edificio || 'Edificio no asignado');
-    
-    const eventos = reservaciones.value.filter(reserva => {
-        const isSameRoom = String(reserva.sala).trim() === String(nombreSala).trim();
-        const isSameDate = reserva.fecha === fechaSeleccionada.value;
-        return isSameRoom && isSameDate;
-    });
-
-    eventos.sort((a, b) => new Date(a.inicioRaw) - new Date(b.inicioRaw));
-
-    return {
-        nombre: nombreSala,
-        edificio: nombreEdificio, 
-        capacidad: salaObj.capacidad, 
-        eventos: eventos
-    };
-  });
+// ==========================================
+// 6. CICLO DE VIDA (Hooks)
+// ==========================================
+onMounted(() => {
+  cargarDatos(); 
+  conectar();
 });
 </script>
 
 <template>
-  <div class="container-fluid p-4">
+  <div class="container-fluid px-4 py-4">
 
-    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center card-header border-0 bg-white mb-4 p-3 rounded shadow-sm">
-        <h2 class="text-dark mb-0 fw-bold d-flex align-items-center">
-           <i class="bi bi-calendar-check text-secondary me-2"></i> Disponibilidad
-        </h2>
-        
-        <div class="d-flex align-items-center gap-2 mt-3 mt-sm-0">
-          <button class="btn btn-outline-secondary btn-sm fw-semibold" @click="cambiarDia(-1)">
-            <i class="bi bi-chevron-left"></i> Anterior
-          </button>
-          <input 
-            type="date" 
-            class="form-control form-control-sm text-center fw-bold font-monospace bg-light" 
-            v-model="fechaSeleccionada"
-            style="max-width: 170px;"
-          >
-          <button class="btn btn-outline-secondary btn-sm fw-semibold" @click="cambiarDia(1)">
-            Siguiente <i class="bi bi-chevron-right"></i>
-          </button>
-        </div>
-    </div>
+    <HeaderInstitucional 
+        titulo="Disponibilidad" 
+        subtitulo="Consulta rápida de ocupación y horarios de espacios físicos."
+        icono="bi-calendar-check"
+    >
+        <template #acciones>
+            <span v-if="esFechaPasada && isSuperUser" class="badge bg-warning text-dark border border-warning me-2 d-flex align-items-center opacity-75">
+                <i class="bi bi-clock-history me-1"></i> Historial
+            </span>
+
+            <button 
+                class="btn btn-outline-secondary btn-sm fw-semibold shadow-sm" 
+                @click="cambiarDia(-1)"
+                :disabled="deshabilitarAnterior"
+            >
+                <i class="bi bi-chevron-left"></i> Anterior
+            </button>
+            <input 
+                type="date" 
+                class="form-control form-control-sm text-center fw-bold font-monospace bg-light shadow-sm" 
+                v-model="fechaSeleccionada"
+                :min="!isSuperUser ? HOY_STR : null"
+                style="max-width: 170px;"
+            >
+            <button class="btn btn-outline-secondary btn-sm fw-semibold shadow-sm" @click="cambiarDia(1)">
+                Siguiente <i class="bi bi-chevron-right"></i>
+            </button>
+        </template>
+    </HeaderInstitucional>
 
     <div>
       <div v-if="cargando" class="text-center py-5 text-muted">
         <div class="spinner-border text-primary mb-2" role="status"></div>
         <p class="small">Sincronizando itinerarios...</p>
-      </div>
-
-      <div v-else-if="servicioCerrado" class="text-center py-5 mt-4 bg-white rounded shadow-sm border border-warning">
-         <div class="py-5">
-              <i class="bi bi-clock-history text-warning display-1"></i>
-              <h2 class="mt-4 fw-bold text-dark">Servicio Cerrado</h2>
-              <p class="text-muted fs-5">
-                  El sistema de reservas y consulta solo está disponible en horario laboral.
-              </p>
-              <div class="d-inline-block bg-light px-4 py-2 rounded-pill border mt-2">
-                  <span class="fw-bold text-primary">Horario de Atención:</span> 08:00 AM - 04:00 PM
-              </div>
-          </div>
       </div>
 
       <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
