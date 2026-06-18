@@ -1,23 +1,49 @@
 <script setup>
-import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
-import { ref, watch, onMounted } from 'vue'; 
+/**
+ * @file App.vue
+ * @description Componente raíz de la aplicación.
+ * Gestiona el layout principal (Topbar y Sidebar), el contenedor dinámico de vistas (RouterView),
+ * el control de cierre de sesión y la visibilidad del menú según el rol (Admin/Docente).
+ */
 
+// ==========================================
+// 1. IMPORTS
+// ==========================================
+import { ref, watch, onMounted } from 'vue'; 
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
+
+// ==========================================
+// 2. CONFIGURACIÓN Y COMPOSABLES
+// ==========================================
 const router = useRouter();
 const route = useRoute();
+
+// ==========================================
+// 3. ESTADO REACTIVO (Variables)
+// ==========================================
 const esAdmin = ref(false);
 
+// ==========================================
+// 4. PROPIEDADES COMPUTADAS
+// ==========================================
+// N/A
+
+// ==========================================
+// 5. FUNCIONES Y MÉTODOS
+// ==========================================
+
+/**
+ * Lee el almacenamiento local para determinar si el usuario actual
+ * tiene privilegios de superusuario para mostrar las opciones administrativas.
+ */
 const verificarAdmin = () => {
   esAdmin.value = localStorage.getItem('is_superuser') === 'true';
 };
 
-onMounted(() => {
-  verificarAdmin();
-});
-
-watch(route, () => {
-  verificarAdmin();
-});
-
+/**
+ * Destruye los tokens de seguridad y los datos de identidad local,
+ * resetea el estado y expulsa al usuario hacia la pantalla de Login.
+ */
 const logout = () => {
   if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
     localStorage.removeItem('access_token');
@@ -32,66 +58,96 @@ const logout = () => {
     router.push('/login');
   }
 }
+
+// ==========================================
+// 6. CICLO DE VIDA (Hooks y Watchers)
+// ==========================================
+
+onMounted(() => {
+  verificarAdmin();
+});
+
+// Vigila los cambios de ruta para re-evaluar permisos (Útil en SPAs)
+watch(route, () => {
+  verificarAdmin();
+});
 </script>
 
 <template>
-  
   <div v-if="route.name === 'login'" class="w-100 h-100">
       <RouterView />
   </div>
 
   <div v-else class="app-layout">
    
-    <div class="topbar">
+    <div class="topbar shadow-sm">
       <div class="logo-text">
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e9/Logo_de_la_UJAT.svg" alt="Logo UJAT" class="logo-img">
-        Universidad Juárez Autónoma de Tabasco
+        <span class="d-none d-md-inline">Universidad Juárez Autónoma de Tabasco</span>
+        <span class="d-md-none">UJAT</span>
       </div>
+      
       <div class="topbar-icons">
-        <img 
-          src="https://cdn-icons-png.flaticon.com/512/1828/1828479.png" 
-          title="Cerrar Sesión" 
-          class="icon"
-          @click="logout"
-        >
+        <button @click="logout" class="btn btn-outline-light d-flex align-items-center gap-2 py-1 px-3 rounded-2" title="Cerrar Sesión">
+            <span class="d-none d-sm-inline fw-semibold" style="font-size: 0.9rem;">Cerrar Sesión</span>
+            <i class="bi bi-box-arrow-right fs-6"></i>
+        </button>
       </div>
     </div>
 
-    <div class="container-fluid main-container">
-      <div class="row flex-nowrap">
-        <div class="col-auto col-md-3 col-xl-2 px-sm-2 px-0 sidebar">
-          <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
+    <div class="container-fluid main-container p-0">
+      <div class="row flex-nowrap g-0">
+        
+        <div class="col-auto col-md-3 col-xl-2 px-0 sidebar shadow-sm z-1">
+          <div class="d-flex flex-column align-items-center align-items-sm-start pt-3 text-white min-vh-100 w-100">
+            
             <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start w-100" id="menu">
               
-              <li class="nav-item w-100">
-                <RouterLink to="/disponibilidad" class="nav-link align-middle px-0 text-dark">
-                  <span class="ms-1 d-none d-sm-inline">Consultar Disponibilidad</span>
-                </RouterLink>
-              </li>
-              
-              <li class="nav-item w-100">
-                <RouterLink to="/reservar" class="nav-link px-0 align-middle text-dark">
-                  <span class="ms-1 d-none d-sm-inline">Reservar Sala Audiovisual</span>
-                </RouterLink>
-              </li>
-              
-              <li class="nav-item w-100" v-if="esAdmin">
-                <RouterLink to="/reportes" class="nav-link px-0 align-middle text-dark">
-                  <span class="ms-1 d-none d-sm-inline">Consultar Reportes</span>
+              <li class="nav-item w-100 mb-1">
+                <RouterLink to="/home" class="nav-link align-middle text-dark w-100 transition-all">
+                  <i class="bi bi-house-door-fill fs-5 me-sm-2 text-center icon-fixed"></i>
+                  <span class="d-none d-sm-inline fw-semibold">Inicio</span>
                 </RouterLink>
               </li>
 
-              <li class="nav-item w-100" v-if="esAdmin">
-                <RouterLink to="/admin/alta-usuario" class="nav-link px-0 align-middle text-dark"> 
-                  <span class="ms-1 d-none d-sm-inline">Alta de Usuarios</span>
+              <li class="nav-item w-100 mb-1">
+                <RouterLink to="/disponibilidad" class="nav-link align-middle text-dark w-100 transition-all">
+                  <i class="bi bi-calendar-week fs-5 me-sm-2 text-center icon-fixed"></i>
+                  <span class="d-none d-sm-inline fw-semibold">Disponibilidad</span>
                 </RouterLink>
               </li>
+              
+              <li class="nav-item w-100 mb-1 border-bottom pb-2">
+                <RouterLink to="/reservar" class="nav-link align-middle text-dark w-100 transition-all">
+                  <i class="bi bi-calendar-plus-fill fs-5 me-sm-2 text-center icon-fixed"></i>
+                  <span class="d-none d-sm-inline fw-semibold">Reservar Sala</span>
+                </RouterLink>
+              </li>
+              
+              <div v-if="esAdmin" class="w-100 mt-2">
+                <small class="text-muted text-uppercase fw-bold px-3 d-none d-sm-block mb-2" style="font-size: 0.7rem; letter-spacing: 0.5px;">Administración</small>
+                
+                <li class="nav-item w-100 mb-1">
+                  <RouterLink to="/reportes" class="nav-link align-middle text-dark w-100 transition-all">
+                    <i class="bi bi-bar-chart-fill fs-5 me-sm-2 text-center icon-fixed"></i>
+                    <span class="d-none d-sm-inline fw-semibold">Reportes </span>
+                  </RouterLink>
+                </li>
 
-              <li class="nav-item w-100" v-if="esAdmin">
-                <RouterLink to="/admin/catalogos" class="nav-link px-0 align-middle text-dark"> 
-                  <span class="ms-1 d-none d-sm-inline">Gestión de Catálogos</span>
-                </RouterLink>
-              </li>
+                <li class="nav-item w-100 mb-1">
+                  <RouterLink to="/admin/alta-usuario" class="nav-link align-middle text-dark w-100 transition-all"> 
+                    <i class="bi bi-people-fill fs-5 me-sm-2 text-center icon-fixed"></i>
+                    <span class="d-none d-sm-inline fw-semibold">Usuarios</span>
+                  </RouterLink>
+                </li>
+
+                <li class="nav-item w-100 mb-1">
+                  <RouterLink to="/admin/catalogos" class="nav-link align-middle text-dark w-100 transition-all"> 
+                    <i class="bi bi-database-fill-gear fs-5 me-sm-2 text-center icon-fixed"></i>
+                    <span class="d-none d-sm-inline fw-semibold">Catálogos</span>
+                  </RouterLink>
+                </li>
+              </div>
 
             </ul>
           </div>
@@ -100,70 +156,90 @@ const logout = () => {
         <div class="col py-3 content-area">
           <RouterView />
         </div>
+
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .topbar {
-  background-color: var(--color-primario);
+  background-color: var(--color-primario, #005f86);
   color: white;
   padding: 10px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 80px;
+  height: 70px;
+  z-index: 10;
 }
 
 .logo-text {
   font-weight: bold;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   display: flex;
   align-items: center;
+  letter-spacing: 0.5px;
 }
 
 .logo-img {
-  height: 60px;
+  height: 45px;
   margin-right: 15px;
-}
-
-.icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  margin-left: 15px;
-  cursor: pointer;
-  filter: brightness(0) invert(1); 
-  transition: transform 0.2s;
-}
-
-.icon:hover {
-  transform: scale(1.1);
+  filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.2));
 }
 
 .sidebar {
-  background-color: #e9ecef;
-  border-right: 1px solid #dee2e6;
+  background-color: #f8f9fa;
+  border-right: 1px solid #e9ecef;
+  overflow-y: auto;
+}
+
+.icon-fixed {
+  width: 25px;
+  display: inline-block;
+  color: #6c757d;
+  transition: color 0.2s ease;
 }
 
 .nav-link {
-  padding: 15px 10px;
-  font-size: 1rem;
-  border-bottom: 1px solid #dee2e6;
+  padding: 12px 20px;
+  font-size: 0.95rem;
+  border-left: 4px solid transparent;
 }
 
 .nav-link:hover {
-  background-color: #ced4da;
+  background-color: #e9ecef;
 }
 
+.nav-link:hover .icon-fixed {
+  color: var(--color-primario, #005f86);
+}
+
+/* Estilo avanzado para la vista activa */
 .router-link-active {
-  background-color: #ced4da;
-  font-weight: bold;
+  background-color: #e9ecef;
+  color: var(--color-primario, #005f86) !important;
+  border-left: 4px solid var(--color-primario, #005f86);
+}
+
+.router-link-active .icon-fixed {
+  color: var(--color-primario, #005f86);
+}
+
+.transition-all {
+  transition: all 0.2s ease;
 }
 
 .content-area {
-  background-color: #f8f9fa;
-  min-height: calc(100vh - 80px);
+  background-color: #f0f2f5;
+  height: calc(100vh - 70px);
+  overflow-y: auto;
 }
 </style>
