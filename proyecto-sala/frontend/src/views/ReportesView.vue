@@ -1,88 +1,152 @@
 <script setup>
+/**
+ * @file ReportesView.vue
+ * @description Módulo de Inteligencia de Negocios (BI) y Auditoría.
+ * Permite el minado de datos de las reservas para calcular KPIs de infraestructura,
+ * renderizar gráficas interactivas y exportar bitácoras formales en formato PDF.
+ */
+
+// ==========================================
+// 1. IMPORTS
+// ==========================================
 import { ref, onMounted, computed } from 'vue';
 import ApiService from '@/services/ApiService.js'; 
 import ReportesService from '@/services/ReporteServices.js';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable'; 
+import HeaderInstitucional from '@/components/HeaderInstitucional.vue';
 
-const barChartRef = ref(null);
-const pieChartRef = ref(null);
-// Referencias para descargar en PDF después (opcional)
-const picoChartRef = ref(null);
-const equipChartRef = ref(null);
-
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement
-} from 'chart.js';
+// Dependencias de Gráficos (Chart.js)
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Pie } from 'vue-chartjs';
 
+// ==========================================
+// 2. CONFIGURACIÓN Y COMPOSABLES
+// ==========================================
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
-const vistaActual = ref('historial'); 
-const historial = ref([]);
-const cargandoHistorial = ref(false);
-const filtrosHistorial = ref({ tipo: '', anio: new Date().getFullYear() });
+const HORARIO_APERTURA = 8;
+const HORARIO_CIERRE = 16;
 
-const reservas = ref([]);
-const salas = ref([]);
+const chartOptions = { 
+    responsive: true, 
+    maintainAspectRatio: false,
+    devicePixelRatio: 4 // Fuerza renderizado en Ultra Alta Resolución para el PDF
+};
+
+// ==========================================
+// 3. ESTADO REACTIVO (Variables)
+// ==========================================
+
+// Estado General de la Vista
+const vistaActual = ref('historial'); // 'historial' o 'nuevo'
 const cargando = ref(false);
 const cargandoAccion = ref(false); 
 const error = ref(null);
 const mensajeExito = ref(null);
 
+// Datos del Historial (Backend)
+const historial = ref([]);
+const cargandoHistorial = ref(false);
+const filtrosHistorial = ref({ tipo: '', anio: new Date().getFullYear() });
+
+// Datos del Análisis en Vivo
+const reservas = ref([]);
+const salas = ref([]);
 const fechaInicio = ref('');
 const fechaFin = ref('');
 const salaSeleccionada = ref('');
 const tipoReporteGenerado = ref('GENERAL'); 
 
-// 1. ESTRUCTURA DE KPIs AMPLIADA
+// Indicadores Clave de Rendimiento (KPIs)
 const stats = ref({
     salaTop: 'N/A',
     maestroTop: 'N/A',
     totalReservas: 0,
     horasTotales: 0,
-    aprovechamiento: '0%' // <-- NUEVO KPI ESTRATÉGICO
+    aprovechamiento: '0%' 
 });
 
-// 2. REFERENCIAS PARA LAS 4 GRÁFICAS
+// Referencias del DOM para exportación PDF
+const barChartRef = ref(null);
+const pieChartRef = ref(null);
+const picoChartRef = ref(null);
+const equipChartRef = ref(null);
+
+// Modelos de Datos para Chart.js
 const chartDataSalas = ref({ labels: [], datasets: [] });
 const chartDataActividades = ref({ labels: [], datasets: [] });
-const chartDataHorasPico = ref({ labels: [], datasets: [] }); // <-- NUEVO
-const chartDataEquipamiento = ref({ labels: [], datasets: [] }); // <-- NUEVO
+const chartDataHorasPico = ref({ labels: [], datasets: [] }); 
+const chartDataEquipamiento = ref({ labels: [], datasets: [] }); 
 
-const chartOptions = { 
-    responsive: true, 
-    maintainAspectRatio: false,
-    devicePixelRatio: 4 // <-- LA MAGIA: Fuerza renderizado en Ultra Alta Resolución
-};
+// ==========================================
+// 4. PROPIEDADES COMPUTADAS
+// ==========================================
 
-onMounted(async () => {
-  await cargarHistorial();
-  try {
-    const res = await ApiService.obtenerSalas();
-    salas.value = res.data || res;
-    configurarFechasDefault();
-  } catch (err) {
-    console.error("Error al cargar salas:", err);
-  }
+/**
+ * Agrupa y suma el tiempo de uso por cada espacio físico para el reporte de ocupación.
+ */
+const reporteOcupacion = computed(() => {
+    const agrupado = {};
+    reservas.value.forEach(r => {
+        const nombreSala = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala || 'Desconocido');
+        if (!agrupado[nombreSala]) {
+            agrupado[nombreSala] = { nombre: nombreSala, reservas: 0, horas: 0 };
+        }
+        agrupado[nombreSala].reservas += 1;
+        
+        const ini = new Date(r.inicio);
+        const fin = new Date(r.fin);
+        const diff = (fin - ini) / (1000 * 60 * 60);
+        if (!isNaN(diff)) agrupado[nombreSala].horas += diff;
+    });
+    return Object.values(agrupado).sort((a, b) => b.horas - a.horas);
 });
 
-function configureFechasDefault() {
+/**
+ * Agrupa la carga horaria y materias vinculadas a cada catedrático.
+ */
+const reporteDocente = computed(() => {
+    const agrupado = {};
+    reservas.value.forEach(r => {
+        const nombreMaestro = r.maestro_nombre || r.maestro || 'Desconocido';
+        const materia = (typeof r.asignatura === 'object') ? r.asignatura.nombre_asignatura : r.asignatura;
+        
+        if (!agrupado[nombreMaestro]) {
+            agrupado[nombreMaestro] = { nombre: nombreMaestro, materias: new Set(), horas: 0, reservas: 0 };
+        }
+        agrupado[nombreMaestro].reservas += 1;
+        if (materia) agrupado[nombreMaestro].materias.add(materia);
+        
+        const ini = new Date(r.inicio);
+        const fin = new Date(r.fin);
+        const diff = (fin - ini) / (1000 * 60 * 60);
+        if (!isNaN(diff)) agrupado[nombreMaestro].horas += diff;
+    });
+    return Object.values(agrupado)
+        .map(item => ({
+            ...item,
+            materiasStr: Array.from(item.materias).join(', ') || 'Varias'
+        }))
+        .sort((a, b) => b.reservas - a.reservas);
+});
+
+// ==========================================
+// 5. FUNCIONES Y MÉTODOS
+// ==========================================
+
+/**
+ * Establece el rango de fechas predeterminado al mes en curso (Día 1 al Último Día).
+ */
+function configurarFechasDefault() {
     const hoy = new Date();
     const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
     const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const offset = primerDia.getTimezoneOffset() * 60000;
+    
     fechaInicio.value = new Date(primerDia - offset).toISOString().split('T')[0];
     fechaFin.value = new Date(ultimoDia - offset).toISOString().split('T')[0];
 }
-function configurarFechasDefault() { configureFechasDefault(); }
 
 async function cargarHistorial() {
     cargandoHistorial.value = true;
@@ -106,52 +170,24 @@ async function eliminarDelHistorial(id) {
     }
 }
 
-async function generarAnalisisEnVivo() {
-  cargando.value = true;
-  error.value = null;
-  reservas.value = [];
-
-  try {
-    const response = await ApiService.obtenerReservas();
-    const datosCrudos = response.data || response;
-
-    if (!Array.isArray(datosCrudos)) throw new Error("Datos inválidos devueltos por el servidor.");
-
-    const inicioRango = new Date(fechaInicio.value + "T00:00:00");
-    const finRango = new Date(fechaFin.value + "T23:59:59");
-
-    const datosFiltrados = datosCrudos.filter(r => {
-        if (!r.inicio) return false;
-        const fechaReserva = new Date(r.inicio);
-        let entraEnFecha = fechaReserva >= inicioRango && fechaReserva <= finRango;
-        
-        let entraEnSala = true;
-        if (salaSeleccionada.value) {
-            const sNombre = typeof r.sala === 'object' ? (r.sala.nombre_sala || r.sala.nombre) : r.sala;
-            entraEnSala = String(sNombre) === String(salaSeleccionada.value);
-        }
-        return entraEnFecha && entraEnSala;
-    });
-
-    if (datosFiltrados.length === 0) {
-        error.value = "No se encontraron actividades registradas en este rango de fechas.";
-        resetStats();
-        return;
-    }
-
-    reservas.value = datosFiltrados;
-    calcularEstadisticas();
-    prepararGraficos();
-
-  } catch (err) {
-    error.value = 'Error al procesar el análisis de datos. Verifique la conexión.';
-    console.error(err);
-  } finally {
-    cargando.value = false;
-  }
+function getKeyWithMaxVal(obj) {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return 'N/A';
+    return keys.reduce((a, b) => obj[a] > obj[b] ? a : b);
 }
 
-// 3. CÁLCULO DE APROVECHAMIENTO (TIEMPO MUERTO)
+function resetStats() {
+    stats.value = { salaTop: 'N/A', maestroTop: 'N/A', totalReservas: 0, horasTotales: 0, aprovechamiento: '0%' };
+    chartDataSalas.value = { labels: [], datasets: [] };
+    chartDataActividades.value = { labels: [], datasets: [] };
+    chartDataHorasPico.value = { labels: [], datasets: [] };
+    chartDataEquipamiento.value = { labels: [], datasets: [] };
+}
+
+/**
+ * Extrae y procesa los datos puros para calcular los 5 KPIs estratégicos
+ * incluyendo la fórmula de optimización de infraestructura.
+ */
 function calcularEstadisticas() {
     if (reservas.value.length === 0) { resetStats(); return; }
     
@@ -183,27 +219,15 @@ function calcularEstadisticas() {
     const dias = Math.max(1, Math.ceil((finRango - iniRango) / (1000 * 60 * 60 * 24)));
     const salasTotales = salas.value.length > 0 ? salas.value.length : Object.keys(conteoSalas).length;
     
-    // Asumimos 8 horas hábiles al día institucionales
-    const horasPosibles = dias * 8 * salasTotales; 
+    const horasPosibles = dias * (HORARIO_CIERRE - HORARIO_APERTURA) * salasTotales; 
     const porcentaje = horasPosibles > 0 ? ((totalHoras / horasPosibles) * 100).toFixed(1) : 0;
     stats.value.aprovechamiento = `${porcentaje}%`;
 }
 
-function getKeyWithMaxVal(obj) {
-    const keys = Object.keys(obj);
-    if (keys.length === 0) return 'N/A';
-    return keys.reduce((a, b) => obj[a] > obj[b] ? a : b);
-}
-
-function resetStats() {
-    stats.value = { salaTop: 'N/A', maestroTop: 'N/A', totalReservas: 0, horasTotales: 0, aprovechamiento: '0%' };
-    chartDataSalas.value = { labels: [], datasets: [] };
-    chartDataActividades.value = { labels: [], datasets: [] };
-    chartDataHorasPico.value = { labels: [], datasets: [] };
-    chartDataEquipamiento.value = { labels: [], datasets: [] };
-}
-
-// 4. PREPARACIÓN DE LAS DOS NUEVAS GRÁFICAS DIRECTIVAS
+/**
+ * Alimenta los modelos reactivos de Chart.js mediante conteos de frecuencia
+ * y análisis de texto (Minería de datos en "Requerimientos Especiales").
+ */
 function prepararGraficos() {
     if (reservas.value.length === 0) return;
     
@@ -250,13 +274,11 @@ function prepararGraficos() {
         datasets: [{ backgroundColor: ['#005f86', '#2ca02c', '#ff7f0e', '#d62728'], borderWidth: 2, data: Object.values(conteoActividades) }]
     };
 
-    // Datos listos para la gráfica de saturación de horarios
     chartDataHorasPico.value = {
         labels: horasOrdenadas,
         datasets: [{ label: 'Reservas Iniciadas', backgroundColor: '#ff7f0e', borderRadius: 4, data: horasOrdenadas.map(h => conteoHoras[h]) }]
     };
 
-    // Datos listos para la gráfica de demanda de equipamiento
     const equiposOrdenados = Object.keys(conteoEquipos).sort((a, b) => conteoEquipos[b] - conteoEquipos[a]);
     chartDataEquipamiento.value = {
         labels: equiposOrdenados.map(e => e.charAt(0).toUpperCase() + e.slice(1)), 
@@ -264,55 +286,65 @@ function prepararGraficos() {
     };
 }
 
-const reporteOcupacion = computed(() => {
-    const agrupado = {};
-    reservas.value.forEach(r => {
-        const nombreSala = (typeof r.sala === 'object') ? (r.sala.nombre_sala || r.sala.nombre) : (r.sala || 'Desconocido');
-        if (!agrupado[nombreSala]) {
-            agrupado[nombreSala] = { nombre: nombreSala, reservas: 0, horas: 0 };
-        }
-        agrupado[nombreSala].reservas += 1;
-        const ini = new Date(r.inicio);
-        const fin = new Date(r.fin);
-        const diff = (fin - ini) / (1000 * 60 * 60);
-        if (!isNaN(diff)) agrupado[nombreSala].horas += diff;
-    });
-    return Object.values(agrupado).sort((a, b) => b.horas - a.horas);
-});
+/**
+ * Descarga las reservas masivas del backend y ejecuta el motor de 
+ * filtrado local basado en el rango de fechas seleccionado.
+ */
+async function generarAnalisisEnVivo() {
+  cargando.value = true;
+  error.value = null;
+  reservas.value = [];
 
-const reporteDocente = computed(() => {
-    const agrupado = {};
-    reservas.value.forEach(r => {
-        const nombreMaestro = r.maestro_nombre || r.maestro || 'Desconocido';
-        const materia = (typeof r.asignatura === 'object') ? r.asignatura.nombre_asignatura : r.asignatura;
+  try {
+    const response = await ApiService.obtenerReservas();
+    const datosCrudos = response.data || response;
+
+    if (!Array.isArray(datosCrudos)) throw new Error("Datos inválidos devueltos por el servidor.");
+
+    const inicioRango = new Date(fechaInicio.value + "T00:00:00");
+    const finRango = new Date(fechaFin.value + "T23:59:59");
+
+    const datosFiltrados = datosCrudos.filter(r => {
+        if (!r.inicio) return false;
+        const fechaReserva = new Date(r.inicio);
+        let entraEnFecha = fechaReserva >= inicioRango && fechaReserva <= finRango;
         
-        if (!agrupado[nombreMaestro]) {
-            agrupado[nombreMaestro] = { nombre: nombreMaestro, materias: new Set(), horas: 0, reservas: 0 };
+        let entraEnSala = true;
+        if (salaSeleccionada.value) {
+            const sNombre = typeof r.sala === 'object' ? (r.sala.nombre_sala || r.sala.nombre) : r.sala;
+            entraEnSala = String(sNombre) === String(salaSeleccionada.value);
         }
-        agrupado[nombreMaestro].reservas += 1;
-        if (materia) agrupado[nombreMaestro].materias.add(materia);
-        const ini = new Date(r.inicio);
-        const fin = new Date(r.fin);
-        const diff = (fin - ini) / (1000 * 60 * 60);
-        if (!isNaN(diff)) agrupado[nombreMaestro].horas += diff;
+        return entraEnFecha && entraEnSala;
     });
-    return Object.values(agrupado)
-        .map(item => ({
-            ...item,
-            materiasStr: Array.from(item.materias).join(', ') || 'Varias'
-        }))
-        .sort((a, b) => b.reservas - a.reservas);
-});
 
+    if (datosFiltrados.length === 0) {
+        error.value = "No se encontraron actividades registradas en este rango de fechas.";
+        resetStats();
+        return;
+    }
+
+    reservas.value = datosFiltrados;
+    calcularEstadisticas();
+    prepararGraficos();
+
+  } catch (err) {
+    error.value = 'Error al procesar el análisis de datos. Verifique la conexión.';
+    console.error(err);
+  } finally {
+    cargando.value = false;
+  }
+}
+
+/**
+ * Ensambla el documento PDF oficial. Dibuja texto, extrae imágenes Base64 
+ * de los canvas de Chart.js y genera la tabla vectorial auto-paginable.
+ */
 const generarBlobPDF = async () => {
-    // 1. Inicializar documento en vertical, milímetros, tamaño Carta (A4)
     const doc = new jsPDF('p', 'mm', 'a4');
-    
-    // 2. Variables de estilo institucional
-    const colorPrimario = [0, 95, 134]; // Azul institucional #005f86
-    let posY = 20; // Coordenada vertical inicial
+    const colorPrimario = [0, 95, 134]; 
+    let posY = 20; 
 
-    // 3. Dibujar Encabezados del Documento
+    // Encabezados
     doc.setFontSize(16);
     doc.setTextColor(...colorPrimario);
     doc.setFont('helvetica', 'bold');
@@ -330,49 +362,40 @@ const generarBlobPDF = async () => {
     
     posY += 15;
 
-    // 4. NUEVO: Dibujar TODOS los 5 KPIs en dos filas
+    // Inyección de KPIs
     doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
-    
-    // Fila 1 de KPIs
     doc.text(`Total de Reservas: ${stats.value.totalReservas}`, 14, posY);
     doc.text(`Horas de Uso: ${stats.value.horasTotales} hrs`, 70, posY);
     doc.text(`Sala Top: ${stats.value.salaTop}`, 125, posY);
     
-    posY += 8; // Salto de línea pequeño
-    
-    // Fila 2 de KPIs
+    posY += 8; 
     doc.text(`Docente Top: ${stats.value.maestroTop}`, 14, posY);
     doc.text(`Aprovechamiento Global: ${stats.value.aprovechamiento}`, 125, posY);
     
-    posY += 15; // Salto de línea hacia las gráficas
+    posY += 15; 
 
-    // 5. NUEVO: Inyectar las 4 Gráficas (Extrayendo el Base64 de las 4 referencias)
+    // Extracción e inyección de Gráficas HD
     if (barChartRef.value && barChartRef.value.chart && pieChartRef.value && pieChartRef.value.chart) {
-        // Imágenes de la primera fila
         const barImgBase64 = barChartRef.value.chart.toBase64Image();
         const pieImgBase64 = pieChartRef.value.chart.toBase64Image();
         
-        // Parámetros: (Imagen, Formato, Eje X, Eje Y, Ancho, Alto)
         doc.addImage(barImgBase64, 'PNG', 14, posY, 110, 60);
         doc.addImage(pieImgBase64, 'PNG', 135, posY, 60, 60);
         
-        // Revisamos si las nuevas gráficas ya se renderizaron para agregarlas a la segunda fila
         if (picoChartRef.value && picoChartRef.value.chart && equipChartRef.value && equipChartRef.value.chart) {
             const picoImgBase64 = picoChartRef.value.chart.toBase64Image();
             const equipImgBase64 = equipChartRef.value.chart.toBase64Image();
             
-            // Las colocamos 70mm más abajo que la primera fila
             doc.addImage(picoImgBase64, 'PNG', 14, posY + 70, 110, 60);
             doc.addImage(equipImgBase64, 'PNG', 135, posY + 70, 60, 60);
-            
-            posY += 140; // Desplazamos el cursor de texto debajo de las DOS filas de gráficas
+            posY += 140; 
         } else {
-            posY += 70; // Si algo falla con las nuevas, solo desplazamos el equivalente a una fila
+            posY += 70; 
         }
     }
 
-    // 6. Preparar Datos Estructurales para la Tabla Vectorial (Sin cambios)
+    // Configuración de Tabla Vectorial
     let columnas = [];
     let filas = [];
 
@@ -401,7 +424,6 @@ const generarBlobPDF = async () => {
         ]);
     }
 
-    // 7. Renderizar la Tabla Vectorial (Calcula saltos de página sola)
     autoTable(doc, {
         startY: posY,
         head: columnas,
@@ -412,13 +434,13 @@ const generarBlobPDF = async () => {
         margin: { left: 14, right: 14 }
     });
 
-    // 8. Retornar el archivo binario para guardarlo o descargarlo
     return doc.output('blob');
 };
 
 async function guardarReporteEnSistema() {
     if (reservas.value.length === 0) return;
     if (!confirm("¿Deseas guardar este reporte en el historial del sistema?")) return;
+    
     cargandoAccion.value = true;
     try {
         const pdfBlob = await generarBlobPDF();
@@ -430,8 +452,10 @@ async function guardarReporteEnSistema() {
             fecha_fin_datos: fechaFin.value,
             archivo: archivoFile
         };
+        
         await ReportesService.crearReporte(payload);
         mensajeExito.value = "Reporte guardado exitosamente en la base de datos.";
+        
         setTimeout(() => {
             mensajeExito.value = null;
             vistaActual.value = 'historial';
@@ -458,37 +482,51 @@ const descargarPDFLocal = async () => {
         cargandoAccion.value = false;
     }
 };
+
+// ==========================================
+// 6. CICLO DE VIDA (Hooks)
+// ==========================================
+onMounted(async () => {
+  await cargarHistorial();
+  try {
+    const res = await ApiService.obtenerSalas();
+    salas.value = res.data || res;
+    configurarFechasDefault();
+  } catch (err) {
+    console.error("Error al cargar salas:", err);
+  }
+});
 </script>
+
 <template>
-  <div class="container-fluid p-4">
+  <div class="container-fluid px-4 py-4">
     
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-        <div>
-            <h2 class="text-dark fw-bold mb-0">
-                <i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Módulo de Reportes
-            </h2>
-            <p class="text-muted small mb-0">Monitoreo de rendimiento e indicadores clave de infraestructura.</p>
-        </div>
-        
-        <div class="btn-group bg-white p-1 rounded shadow-sm border">
-            <button 
-                @click="vistaActual = 'historial'" 
-                class="btn rounded px-3 fw-semibold transition-all btn-sm" 
-                :class="vistaActual === 'historial' ? 'btn-primary text-white shadow-sm' : 'btn-light text-secondary border-0'">
-                <i class="bi bi-clock-history me-1"></i> Historial Archivos
-            </button>
-            <button 
-                @click="vistaActual = 'nuevo'" 
-                class="btn rounded px-3 fw-semibold transition-all btn-sm" 
-                :class="vistaActual === 'nuevo' ? 'btn-primary text-white shadow-sm' : 'btn-light text-secondary border-0'">
-                <i class="bi bi-cpu me-1"></i> Análisis Dinámico
-            </button>
-        </div>
-    </div>
+    <HeaderInstitucional 
+        titulo="Módulo de Reportes" 
+        subtitulo="Monitoreo de rendimiento e indicadores clave de infraestructura."
+        icono="bi-bar-chart-line-fill"
+    >
+        <template #acciones>
+            <div class="btn-group bg-white p-1 rounded shadow-sm border border-light-subtle">
+                <button 
+                    @click="vistaActual = 'historial'" 
+                    class="btn rounded px-3 fw-semibold transition-all btn-sm" 
+                    :class="vistaActual === 'historial' ? 'btn-primary text-white shadow-sm' : 'btn-light text-secondary border-0'">
+                    <i class="bi bi-clock-history me-1"></i> Historial Archivos
+                </button>
+                <button 
+                    @click="vistaActual = 'nuevo'" 
+                    class="btn rounded px-3 fw-semibold transition-all btn-sm" 
+                    :class="vistaActual === 'nuevo' ? 'btn-primary text-white shadow-sm' : 'btn-light text-secondary border-0'">
+                    <i class="bi bi-cpu me-1"></i> Análisis Dinámico
+                </button>
+            </div>
+        </template>
+    </HeaderInstitucional>
 
     <div v-if="vistaActual === 'historial'" class="fade-in">
-        <div class="card shadow-sm border-0 mb-4 bg-white">
-            <div class="card-body p-3 d-flex flex-wrap gap-3 align-items-end">
+        <div class="card shadow-sm border-0 mb-4 bg-white rounded-3">
+            <div class="card-body p-4 d-flex flex-wrap gap-3 align-items-end">
                 <div class="flex-grow-1" style="min-width: 200px;">
                     <label class="form-label small fw-bold text-dark-emphasis mb-1">Filtrar por Categoría</label>
                     <select class="form-select border-light-subtle" v-model="filtrosHistorial.tipo" @change="cargarHistorial">
@@ -502,13 +540,13 @@ const descargarPDFLocal = async () => {
                     <label class="form-label small fw-bold text-dark-emphasis mb-1">Filtrar por Año</label>
                     <input type="number" class="form-control border-light-subtle" v-model="filtrosHistorial.anio" @change="cargarHistorial">
                 </div>
-                <button class="btn btn-outline-secondary d-flex align-items-center gap-2 fw-semibold" @click="cargarHistorial">
+                <button class="btn btn-outline-secondary d-flex align-items-center gap-2 fw-semibold shadow-sm" @click="cargarHistorial">
                     <i class="bi bi-arrow-clockwise"></i> Sincronizar
                 </button>
             </div>
         </div>
 
-        <div class="card shadow-sm border-0 bg-white overflow-hidden">
+        <div class="card shadow-sm border-0 bg-white overflow-hidden rounded-3">
             <div v-if="cargandoHistorial" class="p-5 text-center">
                 <div class="spinner-border text-primary" role="status"></div>
                 <p class="text-muted mt-2 small">Consultando base de datos...</p>
@@ -547,14 +585,14 @@ const descargarPDFLocal = async () => {
                                         v-if="rep.archivo" 
                                         :href="rep.archivo" 
                                         target="_blank"
-                                        class="btn btn-sm btn-outline-primary fw-semibold d-flex align-items-center gap-1"
+                                        class="btn btn-sm btn-outline-primary fw-semibold d-flex align-items-center gap-1 shadow-sm"
                                         title="Abrir PDF original"
                                     >
                                         <i class="bi bi-file-earmark-pdf-fill"></i> PDF
                                     </a>
                                     <button 
                                         @click="eliminarDelHistorial(rep.id)" 
-                                        class="btn btn-sm btn-outline-danger d-flex align-items-center"
+                                        class="btn btn-sm btn-outline-danger d-flex align-items-center shadow-sm"
                                         title="Eliminar registro"
                                     >
                                         <i class="bi bi-trash3-fill"></i>
@@ -569,11 +607,11 @@ const descargarPDFLocal = async () => {
     </div>
 
     <div v-else class="fade-in">
-        <div v-if="mensajeExito" class="alert alert-success border-0 shadow-sm mb-3 d-flex align-items-center">
+        <div v-if="mensajeExito" class="alert alert-success border-0 shadow-sm mb-3 d-flex align-items-center rounded-3">
             <i class="bi bi-check-circle-fill me-2 fs-5"></i> {{ mensajeExito }}
         </div>
 
-        <div class="card mb-4 shadow-sm border-0 bg-white">
+        <div class="card mb-4 shadow-sm border-0 bg-white rounded-3">
             <div class="card-body p-4">
                 <div class="row g-3 align-items-end">
                     <div class="col-md-3">
@@ -593,7 +631,7 @@ const descargarPDFLocal = async () => {
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <button @click="generarAnalisisEnVivo" class="btn btn-primary w-100 fw-semibold shadow-sm" :disabled="cargando">
+                        <button @click="generarAnalisisEnVivo" class="btn btn-primary w-100 fw-bold shadow-sm" :disabled="cargando">
                             <span v-if="cargando" class="spinner-border spinner-border-sm me-2"></span>
                             <i v-else class="bi bi-lightning-charge-fill me-1"></i> {{ cargando ? 'Masticando datos...' : 'Ejecutar Análisis' }}
                         </button>
@@ -602,7 +640,9 @@ const descargarPDFLocal = async () => {
             </div>
         </div>
 
-        <div v-if="error" class="alert alert-danger border-0 shadow-sm mb-4"><i class="bi bi-exclamation-octagon-fill me-2"></i>{{ error }}</div>
+        <div v-if="error" class="alert alert-danger border-0 shadow-sm mb-4 rounded-3">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i>{{ error }}
+        </div>
 
         <div v-if="reservas.length > 0" class="fade-in">
             
@@ -610,13 +650,13 @@ const descargarPDFLocal = async () => {
                 <button @click="descargarPDFLocal" class="btn btn-sm btn-outline-secondary fw-semibold bg-white shadow-sm" :disabled="cargandoAccion">
                     <i class="bi bi-file-earmark-arrow-down"></i> Descargar Copia Local
                 </button>
-                <button @click="guardarReporteEnSistema" class="btn btn-success fw-semibold shadow-sm" :disabled="cargandoAccion">
+                <button @click="guardarReporteEnSistema" class="btn btn-success fw-bold shadow-sm" :disabled="cargandoAccion">
                     <span v-if="cargandoAccion" class="spinner-border spinner-border-sm me-1"></span>
                     <i v-else class="bi bi-cloud-arrow-up-fill me-1"></i> Archivar en Servidor
                 </button>
             </div>
 
-            <div id="reporte-imprimible" class="bg-white p-5 rounded shadow-sm border border-light-subtle">
+            <div id="reporte-imprimible" class="bg-white p-4 p-lg-5 rounded-4 shadow-sm border border-light-subtle">
                 
                 <div class="d-flex justify-content-between align-items-center border-bottom pb-4 mb-4">
                     <div>
@@ -801,11 +841,9 @@ const descargarPDFLocal = async () => {
 </template>
 
 <style scoped>
-/* Transiciones estéticas de desvanecimiento */
 .fade-in { animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Inyección de color institucional para encabezados de tablas */
 .custom-table-header {
     background-color: #005f86 !important;
 }

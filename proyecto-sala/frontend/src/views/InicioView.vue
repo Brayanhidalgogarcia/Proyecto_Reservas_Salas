@@ -1,11 +1,43 @@
-<<script setup>
+<script setup>
+/**
+ * @file InicioView.vue
+ * @description Pantalla de bienvenida o Dashboard del sistema (Home).
+ * Se encarga de descifrar la identidad del usuario en sesión mediante
+ * el JWT y muestra un saludo interactivo y personalizado dependiendo de su rol.
+ */
+
+// ==========================================
+// 1. IMPORTS
+// ==========================================
 import { ref, onMounted } from 'vue';
 import ApiService from '@/services/ApiService.js';
 
+// ==========================================
+// 2. CONFIGURACIÓN Y COMPOSABLES
+// ==========================================
+// N/A para esta vista
+
+// ==========================================
+// 3. ESTADO REACTIVO (Variables)
+// ==========================================
 const nombreUsuario = ref('Cargando credenciales...');
 const rolUsuario = ref('Autenticando...');
 
-// Función experta para descifrar el JWT y sacar tu ID de usuario
+// ==========================================
+// 4. PROPIEDADES COMPUTADAS
+// ==========================================
+// N/A para esta vista
+
+// ==========================================
+// 5. FUNCIONES Y MÉTODOS
+// ==========================================
+
+/**
+ * Función criptográfica experta: Descifra el JWT (JSON Web Token) almacenado en local.
+ * Aísla el payload (segmento medio en Base64), lo decodifica y extrae el ID 
+ * del usuario para evitar peticiones redundantes al backend.
+ * @returns {string|null} ID numérico del usuario o null si el token es inválido.
+ */
 function obtenerIdDesdeToken() {
     const token = localStorage.getItem('access_token') || localStorage.getItem('access');
     if (!token) return null;
@@ -19,7 +51,12 @@ function obtenerIdDesdeToken() {
     }
 }
 
-onMounted(async () => {
+/**
+ * Orquesta la carga de la identidad visual. Verifica si es administrador, 
+ * y en caso de ser docente, cruza su ID con el catálogo de maestros 
+ * para construir un saludo personalizado con su nombre real.
+ */
+async function cargarPerfil() {
     const isSuper = String(localStorage.getItem('is_superuser')).toLowerCase() === 'true';
     const userId = localStorage.getItem('user_id') || obtenerIdDesdeToken();
 
@@ -29,7 +66,6 @@ onMounted(async () => {
     } else {
         rolUsuario.value = 'Catedrático';
         try {
-            // Buscamos en el catálogo de maestros quién es el dueño de esta sesión
             const resMaestros = await ApiService.obtenerMaestros();
             const maestros = resMaestros.data || resMaestros;
             
@@ -40,16 +76,22 @@ onMounted(async () => {
             });
 
             if (maestroLogueado) {
-                // Si te encuentra, arma el saludo perfecto
                 nombreUsuario.value = `Maestro ${maestroLogueado.nombre} ${maestroLogueado.apellido_p || ''}`.trim();
             } else {
                 nombreUsuario.value = 'Docente';
             }
         } catch (error) {
-            console.error("Error al obtener perfil:", error);
+            console.error("Error al obtener perfil del catálogo:", error);
             nombreUsuario.value = 'Usuario';
         }
     }
+}
+
+// ==========================================
+// 6. CICLO DE VIDA (Hooks)
+// ==========================================
+onMounted(() => {
+    cargarPerfil();
 });
 </script>
 
@@ -59,9 +101,9 @@ onMounted(async () => {
     <div class="card border-0 shadow-lg rounded-4 overflow-hidden fade-in" style="max-width: 950px; width: 100%;">
       <div class="row g-0">
         
-        <div class="col-md-5 d-none d-md-block position-relative" style="background-color: #004c6d; min-height: 400px;">
+        <div class="col-md-5 d-none d-md-block position-relative hero-bg">
           
-          <div class="position-absolute top-0 start-0 w-100 h-100 opacity-25" style="background-color: #005f86; z-index: 1;"></div>
+          <div class="position-absolute top-0 start-0 w-100 h-100 opacity-25 overlay-color" style="z-index: 1;"></div>
           
           <img
             src="@/assets/imagenes/ujat-imagen.png"
@@ -70,7 +112,7 @@ onMounted(async () => {
             style="position: absolute; top: 0; left: 0; object-fit: cover;"
           >
           
-          <div class="position-absolute bottom-0 start-0 w-100 p-4 text-white" style="z-index: 2; background: linear-gradient(to top, rgba(0, 50, 75, 0.95), transparent);">
+          <div class="position-absolute bottom-0 start-0 w-100 p-4 text-white gradient-overlay" style="z-index: 2;">
             <h5 class="fw-bold mb-1" style="letter-spacing: 1px;">UJAT</h5>
             <small class="opacity-75 fw-medium d-block">División Académica de Informática y Sistemas</small>
           </div>
@@ -78,7 +120,7 @@ onMounted(async () => {
 
         <div class="col-md-7 p-5 bg-white d-flex flex-column justify-content-center position-relative">
           
-          <div class="position-absolute top-0 start-0 w-100" style="height: 6px; background-color: #005f86;"></div>
+          <div class="position-absolute top-0 start-0 w-100 top-border-accent"></div>
 
           <div class="mb-4 d-md-none text-center">
              <img src="@/assets/imagenes/ujat-imagen.png" class="img-fluid rounded shadow-sm" style="max-height: 140px; object-fit: cover; width: 100%;">
@@ -94,7 +136,7 @@ onMounted(async () => {
 
           <p class="fs-4 text-secondary mb-4 mt-2">
             Bienvenido de vuelta,<br>
-            <span class="fw-bold" style="color: #005f86;">{{ nombreUsuario }}</span>.
+            <span class="fw-bold text-primary-custom">{{ nombreUsuario }}</span>.
           </p>
 
           <hr class="border-light-subtle mb-4 w-75">
@@ -104,7 +146,7 @@ onMounted(async () => {
           </p>
 
           <div class="mt-4 pt-2">
-            <router-link to="/disponibilidad" class="btn text-white px-4 py-2 fw-semibold shadow-sm rounded-3 transition-all" style="background-color: #005f86; border-color: #005f86;">
+            <router-link to="/disponibilidad" class="btn text-white px-4 py-2 fw-semibold shadow-sm rounded-3 transition-all btn-institucional">
               <i class="bi bi-calendar-week me-2"></i>Ver Disponibilidad de Salas
             </router-link>
           </div>
@@ -117,6 +159,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Transición de entrada */
 .fade-in {
     animation: fadeIn 0.6s ease-out;
 }
@@ -125,9 +168,35 @@ onMounted(async () => {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Efecto hover suave para el botón */
-.btn:hover {
+/* Variables de Colores Institucionales */
+.hero-bg {
+    background-color: #004c6d; 
+    min-height: 400px;
+}
+.overlay-color {
+    background-color: #005f86;
+}
+.gradient-overlay {
+    background: linear-gradient(to top, rgba(0, 50, 75, 0.95), transparent);
+}
+.top-border-accent {
+    height: 6px; 
+    background-color: #005f86;
+}
+.text-primary-custom {
+    color: #005f86;
+}
+.btn-institucional {
+    background-color: #005f86; 
+    border-color: #005f86;
+}
+
+/* Efecto hover suave para el botón principal */
+.btn-institucional:hover {
     filter: brightness(1.1);
     transform: translateY(-1px);
+}
+.transition-all {
+    transition: all 0.2s ease;
 }
 </style>
