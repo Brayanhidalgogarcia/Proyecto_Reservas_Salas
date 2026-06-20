@@ -1,22 +1,36 @@
+"""
+Configuración principal (Settings) para el backend del Sistema de Reservas.
+Implementa validaciones de entorno para asegurar transiciones seguras
+entre el desarrollo local y el despliegue en producción.
+"""
+
 import os
 from pathlib import Path
 from datetime import timedelta
 
+# ==========================================
+# 1. RUTAS BASE
+# ==========================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ==========================================
+# 2. SEGURIDAD Y ENTORNO
+# ==========================================
+# ADVERTENCIA: En producción, estas variables deben inyectarse desde el servidor (ej. archivo .env)
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-=*_us3-c!tc=0@$+hmyvz3#-%xel@-y3h5e127hn2w_bih!@ea')
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=*_us3-c!tc=0@$+hmyvz3#-%xel@-y3h5e127hn2w_bih!@ea'
+# Si la variable de entorno DJANGO_DEBUG es 'False', desactiva el modo de depuración
+DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Configuración dinámica de hosts permitidos
+# Ej. export DJANGO_ALLOWED_HOSTS="api.midominio.com,127.0.0.1"
+allowed_hosts_env = os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost')
+ALLOWED_HOSTS = allowed_hosts_env.split(',')
 
-ALLOWED_HOSTS = []
-
-
-# Application definition
-
-INSTALLED_APPS = [
+# ==========================================
+# 3. APLICACIONES INSTALADAS
+# ==========================================
+DJANGO_APPS = [
     'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -24,14 +38,24 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
-    'reservas',
+]
+
+THIRD_PARTY_APPS = [
     'corsheaders',
     'rest_framework',
-    'api',
     'channels',
 ]
 
+LOCAL_APPS = [
+    'api',
+    'reservas',
+]
+
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+# ==========================================
+# 4. MIDDLEWARE
+# ==========================================
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -45,6 +69,9 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'api.urls'
 
+# ==========================================
+# 5. MOTORES DE PLANTILLAS Y ASGI/WSGI
+# ==========================================
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -63,30 +90,35 @@ TEMPLATES = [
 WSGI_APPLICATION = 'api.wsgi.application'
 ASGI_APPLICATION = 'api.asgi.application'
 
+# ==========================================
+# 6. CONFIGURACIÓN DE CHANNELS (WEBSOCKETS)
+# ==========================================
+# Nota: Para escalar en producción, cambiar InMemoryChannelLayer por RedisChannelLayer
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
     }
 }
 
-
-# Database
+# ==========================================
+# 7. BASE DE DATOS
+# ==========================================
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'sistemareservas',
-        'USER': 'root',
-        'PASSWORD': '12345678',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'NAME': os.getenv('DB_NAME', 'sistemareservas'),
+        'USER': os.getenv('DB_USER', 'root'),
+        'PASSWORD': os.getenv('DB_PASSWORD', '12345678'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '3306'),
     }
 }
 
-
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
+# ==========================================
+# 8. AUTENTICACIÓN Y VALIDACIÓN DE CLAVES
+# ==========================================
+AUTH_USER_MODEL = 'reservas.Usuario'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -103,55 +135,46 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
-LANGUAGE_CODE = 'es-mx'
-
-TIME_ZONE = 'America/Mexico_City'
-
-USE_I18N = True
-
-USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
-STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",   
-    "http://127.0.0.1:5173",
-]
+# ==========================================
+# 9. CONFIGURACIÓN DRF Y JWT (API REST)
+# ==========================================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
-    
-     'DEFAULT_PERMISSION_CLASSES': (
-         'rest_framework.permissions.IsAuthenticated',
-     ),
-     
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
 }
-
-
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), 
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),    
 }
-AUTH_USER_MODEL = 'reservas.Usuario'
 
+# ==========================================
+# 10. CORS (Cross-Origin Resource Sharing)
+# ==========================================
+# Orígenes permitidos para interactuar con la API (Vue.js frontend)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",   
+    "http://127.0.0.1:5173",
+]
+
+# ==========================================
+# 11. INTERNACIONALIZACIÓN Y ZONA HORARIA
+# ==========================================
+LANGUAGE_CODE = 'es-mx'
+TIME_ZONE = 'America/Mexico_City'
+USE_I18N = True
+USE_TZ = True
+
+# ==========================================
+# 12. ARCHIVOS ESTÁTICOS Y MULTIMEDIA
+# ==========================================
+STATIC_URL = 'static/'
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_URL = '/media/'
-
-
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
